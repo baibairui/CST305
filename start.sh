@@ -5,7 +5,7 @@ CFLAGS="-I/opt/X11/include -DGL_SILENCE_DEPRECATION"
 LDFLAGS="-L/opt/X11/lib -lglut -framework OpenGL"
 
 # 定义源文件目录和目标目录
-SRC_DIR=$(pwd)
+SRC_DIR=$(pwd)"/src"
 BIN_DIR=$(pwd)"/bin"
 
 # 如果目标目录不存在，创建它
