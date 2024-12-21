@@ -1,4 +1,4 @@
-#include <GL/glut.h>
+#include <GLUT/glut.h>
 #include <cmath>
 #include <cstdio>
 
@@ -6,9 +6,9 @@
 float lamp_x = 0.0f; // 灯罩在底座上的X坐标
 float lamp_y = 0.0f; // 灯罩在底座上的Y坐标
 
-float base_radius = 2.0f;       // 底座半径
-float base_height = 0.2f;       // 底座厚度
-float hemisphere_radius = 0.8f; // 半球半径
+float base_radius = 2.5f;       // 增大底座半径
+float base_height = 0.3f;       // 增加底座厚度
+float hemisphere_radius = 1.0f; // 增大灯罩半径
 
 float max_distance = 2.0f; // 最大距离（用于光亮衰减）
 int use_custom_atten = 0;  // 自定义光衰减开关
@@ -33,6 +33,15 @@ const int clickThreshold = 5; // 点击与拖动的阈值
 
 // 灯光状态
 bool lightOn = false;
+
+// 光照强度相关变量
+float light_intensity = 1.0f;     // 光照强度，范围0.0-3.0
+const float intensity_step = 0.2f; // 每次调整的步长增加，使变化更明显
+
+float base_light_intensity = 1.5f;     // 基础光照强度
+float min_light_intensity = 0.3f;      // 最小光照强度
+float center_x = 0.0f;                 // 底座中心X坐标
+float center_y = 0.0f;                 // 底座中心Y坐标
 
 // ---------------- 函数声明 ----------------
 void initLighting();
@@ -61,21 +70,29 @@ void initLighting() {
     // 设置颜色材质模式，允许材质属性由颜色定义
     glColorMaterial(GL_FRONT, GL_AMBIENT_AND_DIFFUSE);
     
-    GLfloat ambient[] = {0.2f, 0.2f, 0.2f, 1.0f};
-    GLfloat diffuse[] = {1.0f, 1.0f, 1.0f, 1.0f};
-    GLfloat specular[] = {0.8f, 0.8f, 0.8f, 1.0f};
-    glLightfv(GL_LIGHT0, GL_AMBIENT, ambient);
-    glLightfv(GL_LIGHT0, GL_DIFFUSE, diffuse);
-    glLightfv(GL_LIGHT0, GL_SPECULAR, specular);
+    // 设置 GL_LIGHT0 的属性（主光源）
+    GLfloat ambient0[] = {0.5f, 0.45f, 0.4f, 1.0f};    // 偏暖的环境光
+    GLfloat diffuse0[] = {2.0f, 1.8f, 1.6f, 1.0f};    // 偏黄的漫反射光
+    GLfloat specular0[] = {1.0f, 0.95f, 0.9f, 1.0f};  // 略微发黄的高光
+    glLightfv(GL_LIGHT0, GL_AMBIENT, ambient0);
+    glLightfv(GL_LIGHT0, GL_DIFFUSE, diffuse0);
+    glLightfv(GL_LIGHT0, GL_SPECULAR, specular0);
     
-    // 初始光源位置
-    GLfloat position[] = {lamp_x, lamp_y, hemisphere_radius * 0.6f, 1.0f}; // 光源初始位置在灯罩中心
-    glLightfv(GL_LIGHT0, GL_POSITION, position);
+    // 初始光源位置在灯罩中心
+    GLfloat position0[] = {lamp_x, lamp_y, hemisphere_radius * 0.6f, 1.0f};
+    glLightfv(GL_LIGHT0, GL_POSITION, position0);
     
-    // 设置光照衰减
+    // 设置 GL_LIGHT0 的初始衰减参数
     GLfloat constant = 1.0f;
-    GLfloat linear = 0.09f;
-    GLfloat quadratic = 0.032f;
+    GLfloat linear = 0.014f;
+    GLfloat quadratic = 0.0007f;
+    
+    // 如果灯是关闭的，使用强衰减
+    if (!lightOn) {
+        linear = 2.0f;
+        quadratic = 1.0f;
+    }
+    
     glLightf(GL_LIGHT0, GL_CONSTANT_ATTENUATION, constant);
     glLightf(GL_LIGHT0, GL_LINEAR_ATTENUATION, linear);
     glLightf(GL_LIGHT0, GL_QUADRATIC_ATTENUATION, quadratic);
@@ -85,27 +102,73 @@ void initLighting() {
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     
     glShadeModel(GL_SMOOTH);
+    
+    // 设置背景色为温暖的深色
+    glClearColor(0.15f, 0.12f, 0.1f, 1.0f);  // 深褐色背景
 }
 
 // ---------------- 更新光照 ----------------
 void updateLighting() {
-    float distance = sqrt(lamp_x * lamp_x + lamp_y * lamp_y);
-    float intensity = 1.0f - (distance / max_distance);
-    if (intensity < 0.2f) intensity = 0.2f;
+    // 计算当前位置到中心的距离
+    float distance = sqrt(pow(lamp_x - center_x, 2) + pow(lamp_y - center_y, 2));
+    float max_distance = base_radius - hemisphere_radius;  // 最大可移动距离
     
-    GLfloat diffuse[] = {intensity, intensity, intensity, 1.0f};
-    glLightfv(GL_LIGHT0, GL_DIFFUSE, diffuse);
+    // 根据距离和开关状态计算光照强度
+    float intensity_factor = 1.0f - (distance / max_distance) * 0.7f;  // 保留30%的最小强度
+    float current_intensity = base_light_intensity * (min_light_intensity + (1.0f - min_light_intensity) * intensity_factor);
     
-    // 更新光源位置，与灯罩中心一致
-    float scale_z = 0.6f; // 与灯罩缩放因子一致
+    // 应用用户调整的光照强度
+    current_intensity *= light_intensity;
+    
+    // 如果灯是关闭的，将强度设为很小的值以模拟环境光
+    if (!lightOn) {
+        current_intensity = 0.1f;  // 保留微弱的环境光
+    }
+    
+    // 应用光照强度
+    GLfloat ambient0[] = {0.4f * current_intensity, 0.4f * current_intensity, 0.4f * current_intensity, 1.0f};
+    GLfloat diffuse0[] = {2.0f * current_intensity, 1.9f * current_intensity, 1.7f * current_intensity, 1.0f};
+    
+    // 更新光源位置
+    float scale_z = 0.6f;
     float lamp_z = hemisphere_radius * scale_z;
-    GLfloat position[] = {lamp_x, lamp_y, lamp_z, 1.0f};
-    glLightfv(GL_LIGHT0, GL_POSITION, position);
+    GLfloat position0[] = {lamp_x, lamp_y, lamp_z, 1.0f};
+    
+    glLightfv(GL_LIGHT0, GL_POSITION, position0);
+    glLightfv(GL_LIGHT0, GL_AMBIENT, ambient0);
+    glLightfv(GL_LIGHT0, GL_DIFFUSE, diffuse0);
+    
+    // 根据灯的状态设置衰减
+    if (lightOn && use_custom_atten) {
+        GLfloat constant = 1.0f;
+        GLfloat linear = 0.02f;
+        GLfloat quadratic = 0.005f;
+        glLightf(GL_LIGHT0, GL_CONSTANT_ATTENUATION, constant);
+        glLightf(GL_LIGHT0, GL_LINEAR_ATTENUATION, linear);
+        glLightf(GL_LIGHT0, GL_QUADRATIC_ATTENUATION, quadratic);
+    } else if (!lightOn) {
+        // 灯关闭时，使用较强的衰减来限制光照范围
+        glLightf(GL_LIGHT0, GL_CONSTANT_ATTENUATION, 1.0f);
+        glLightf(GL_LIGHT0, GL_LINEAR_ATTENUATION, 2.0f);
+        glLightf(GL_LIGHT0, GL_QUADRATIC_ATTENUATION, 1.0f);
+    }
 }
 
 // ---------------- 绘制底座 ----------------
 void drawBase() {
     glPushMatrix();
+    
+    // 设置材质属性
+    GLfloat mat_ambient[] = {0.3f, 0.3f, 0.3f, 1.0f};
+    GLfloat mat_diffuse[] = {0.5f, 0.5f, 0.5f, 1.0f};
+    GLfloat mat_specular[] = {0.7f, 0.7f, 0.7f, 1.0f};
+    GLfloat mat_shininess[] = {50.0f};
+    
+    glMaterialfv(GL_FRONT, GL_AMBIENT, mat_ambient);
+    glMaterialfv(GL_FRONT, GL_DIFFUSE, mat_diffuse);
+    glMaterialfv(GL_FRONT, GL_SPECULAR, mat_specular);
+    glMaterialfv(GL_FRONT, GL_SHININESS, mat_shininess);
+    
     glColor3f(0.5f, 0.5f, 0.5f); // 灰色底座
     glTranslatef(0.0f, 0.0f, -base_height / 2);
     GLUquadric *quad = gluNewQuadric();
@@ -117,6 +180,13 @@ void drawBase() {
 }
 
 // ---------------- 绘制灯罩（改进版） ----------------
+float calculateCurrentBrightness() {
+    float distance = sqrt(pow(lamp_x - center_x, 2) + pow(lamp_y - center_y, 2));
+    float max_distance = base_radius - hemisphere_radius;
+    float intensity_factor = 1.0f - (distance / max_distance) * 0.7f;  // 保留30%的最小强度
+    return min_light_intensity + (1.0f - min_light_intensity) * intensity_factor;
+}
+
 void drawLampCover() {
     glPushMatrix();
     
@@ -125,28 +195,64 @@ void drawLampCover() {
     float lamp_z = hemisphere_radius * scale_z;
     glTranslatef(lamp_x, lamp_y, lamp_z);
     
-    // 设置玻璃材质属性
-    GLfloat glass_ambient[] = {0.2f, 0.2f, 0.2f, 0.3f}; // 增加透明度
-    GLfloat glass_diffuse[] = {0.6f, 0.6f, 0.8f, 0.3f};
-    GLfloat glass_specular[] = {0.9f, 0.9f, 0.9f, 0.3f};
-    GLfloat glass_shininess[] = {50.0f};
+    // 更透明的灯罩材质
+    GLfloat glass_ambient[] = {0.1f, 0.1f, 0.1f, 0.2f};
+    GLfloat glass_diffuse[] = {0.7f, 0.7f, 0.7f, 0.15f};  // 更透明
+    GLfloat glass_specular[] = {1.0f, 1.0f, 1.0f, 0.2f};
+    GLfloat glass_shininess[] = {128.0f};
     
-    glMaterialfv(GL_FRONT, GL_AMBIENT, glass_ambient);
-    glMaterialfv(GL_FRONT, GL_DIFFUSE, glass_diffuse);
-    glMaterialfv(GL_FRONT, GL_SPECULAR, glass_specular);
-    glMaterialfv(GL_FRONT, GL_SHININESS, glass_shininess);
+    if (lightOn) {
+        // 灯亮时的内部发光效果，根据位置调整亮度
+        float brightness = calculateCurrentBrightness();
+        GLfloat glass_emission[] = {
+            0.4f * brightness,
+            0.4f * brightness,
+            0.35f * brightness,
+            0.3f
+        };
+        glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, glass_emission);
+    }
     
-    // 启用透明度
+    glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, glass_ambient);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, glass_diffuse);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, glass_specular);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, glass_shininess);
+    
+    // 双面渲染和混合设置
+    glDisable(GL_CULL_FACE);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     
-    // 非均匀缩放，使灯罩更扁
+    // 绘制内外两层灯罩
     glScalef(1.0f, 1.0f, scale_z);
     
-    // 绘制类球状灯罩
     GLUquadric *quad = gluNewQuadric();
+    gluQuadricNormals(quad, GLU_SMOOTH);
+    
+    // 外层灯罩
     gluSphere(quad, hemisphere_radius, 50, 50);
+    
+    if (lightOn) {
+        // 内层发光层，同样根据位置调整亮度
+        float brightness = calculateCurrentBrightness();
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+        GLfloat inner_emission[] = {
+            0.6f * brightness,
+            0.6f * brightness,
+            0.5f * brightness,
+            0.4f
+        };
+        glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, inner_emission);
+        gluSphere(quad, hemisphere_radius * 0.95f, 50, 50);
+    }
+    
     gluDeleteQuadric(quad);
+    glEnable(GL_CULL_FACE);
+    glDisable(GL_BLEND);
+    
+    // 重置发光
+    GLfloat no_emission[] = {0.0f, 0.0f, 0.0f, 1.0f};
+    glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, no_emission);
     
     glPopMatrix();
     
@@ -162,6 +268,21 @@ void drawLampCover() {
     glMaterialfv(GL_FRONT, GL_SPECULAR, glass_specular);
     glMaterialfv(GL_FRONT, GL_SHININESS, glass_shininess);
     
+    // 如果灯是开着的，为底部添加发光效果
+    if (lightOn) {
+        float brightness = calculateCurrentBrightness();
+        GLfloat bottom_emission[] = {
+            0.3f * brightness,  // 稍微减弱底部的发光强度
+            0.3f * brightness,
+            0.25f * brightness,
+            0.2f
+        };
+        glMaterialfv(GL_FRONT, GL_EMISSION, bottom_emission);
+    } else {
+        // 使用已定义的 no_emission 而不是重新定义
+        glMaterialfv(GL_FRONT, GL_EMISSION, no_emission);
+    }
+    
     // 启用透明度
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -171,7 +292,9 @@ void drawLampCover() {
     gluDisk(quad, 0.0f, hemisphere_radius, 50, 50);
     gluDeleteQuadric(quad);
     
-    // 禁用透明度（如果不需要其他透明对象）
+    // 重置发光属性（使用已定义的 no_emission）
+    glMaterialfv(GL_FRONT, GL_EMISSION, no_emission);
+    
     glDisable(GL_BLEND);
     
     glPopMatrix();
@@ -179,25 +302,55 @@ void drawLampCover() {
 
 // ---------------- 绘制光源（灯泡） ----------------
 void drawLightSource() {
-    if (!lightOn) return; // 仅在灯光开启时绘制
+    if (!lightOn) return;
     
     glPushMatrix();
-    
-    // 光源的位置与灯罩中心位置相同
-    float scale_z = 0.6f; // 与灯罩缩放因子一致
+    float scale_z = 0.6f;
     float lamp_z = hemisphere_radius * scale_z;
     glTranslatef(lamp_x, lamp_y, lamp_z);
     
-    // 设置发光材质属性
-    GLfloat emissive[] = {1.0f, 1.0f, 0.8f, 1.0f}; // 发光颜色（暖白色）
-    glMaterialfv(GL_FRONT, GL_EMISSION, emissive);
+    // 计算当前亮度
+    float brightness = calculateCurrentBrightness() * light_intensity;
     
-    // 绘制一个小球体作为光源
+    // 根据位置调整发光效果
+    GLfloat bright_emissive[] = {
+        1.0f * brightness,
+        0.95f * brightness,
+        0.8f * brightness,
+        1.0f
+    };
+    GLfloat medium_emissive[] = {
+        0.8f * brightness,
+        0.75f * brightness,
+        0.6f * brightness,
+        0.7f
+    };
+    GLfloat soft_emissive[] = {
+        0.6f * brightness,
+        0.55f * brightness,
+        0.4f * brightness,
+        0.5f
+    };
+    
+    // 增强发光效果
+    glMaterialfv(GL_FRONT, GL_EMISSION, bright_emissive);
     GLUquadric *quad = gluNewQuadric();
-    gluSphere(quad, 0.1f, 30, 30); // 小球体半径为0.1
+    gluSphere(quad, 0.2f, 30, 30);  // 增大中心灯泡
+    
+    // 启用混合以创建光晕效果
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+    
+    // 绘制多层光晕
+    glMaterialfv(GL_FRONT, GL_EMISSION, medium_emissive);
+    glutSolidSphere(0.3f, 20, 20);  // 增大中等光晕
+    
+    glMaterialfv(GL_FRONT, GL_EMISSION, soft_emissive);
+    glutSolidSphere(0.4f, 20, 20);  // 增大外层光晕
+    
+    glDisable(GL_BLEND);
     gluDeleteQuadric(quad);
     
-    // 取消发光材质属性
     GLfloat no_emission[] = {0.0f, 0.0f, 0.0f, 1.0f};
     glMaterialfv(GL_FRONT, GL_EMISSION, no_emission);
     
@@ -207,8 +360,21 @@ void drawLightSource() {
 // ---------------- 绘制地面 ----------------
 void drawGround() {
     glPushMatrix();
-    glColor3f(0.3f, 0.3f, 0.3f); // 灰色地面
+    
+    // 设置材质属性
+    GLfloat mat_ambient[] = {0.25f, 0.22f, 0.2f, 1.0f};   // 暖灰色环境光反射
+    GLfloat mat_diffuse[] = {0.35f, 0.32f, 0.3f, 1.0f};   // 暖灰色漫反射
+    GLfloat mat_specular[] = {0.5f, 0.47f, 0.45f, 1.0f};  // 暖色调高光
+    GLfloat mat_shininess[] = {25.0f};  // 降低光泽度使其看起来更柔和
+    
+    glMaterialfv(GL_FRONT, GL_AMBIENT, mat_ambient);
+    glMaterialfv(GL_FRONT, GL_DIFFUSE, mat_diffuse);
+    glMaterialfv(GL_FRONT, GL_SPECULAR, mat_specular);
+    glMaterialfv(GL_FRONT, GL_SHININESS, mat_shininess);
+    
+    glColor3f(0.35f, 0.32f, 0.3f); // 暖灰色地面
     glBegin(GL_QUADS);
+    glNormal3f(0.0f, 0.0f, 1.0f); // 法向量朝上
     glVertex3f(-5.0f, -5.0f, -0.01f);
     glVertex3f(5.0f, -5.0f, -0.01f);
     glVertex3f(5.0f, 5.0f, -0.01f);
@@ -279,12 +445,23 @@ void reshape(int w, int h) {
 // ---------------- 键盘事件 ----------------
 void handleKeyboard(unsigned char key, int x, int y) {
     switch (key) {
-        case 'w': camera_distance -= 0.2f; if (camera_distance < 1.0f) camera_distance = 1.0f; break;
-        case 's': camera_distance += 0.2f; break;
-        case 'a': camera_angle_y -= 5.0f; break;
-        case 'd': camera_angle_y += 5.0f; break;
-        case 'z': camera_angle_x += 5.0f; if (camera_angle_x > 90.0f) camera_angle_x = 90.0f; break;
-        case 'x': camera_angle_x -= 5.0f; if (camera_angle_x < -90.0f) camera_angle_x = -90.0f; break;
+        case 'o': // 切换灯光状态
+        case 'O':
+            lightOn = !lightOn;
+            printf("Light is %s\n", lightOn ? "ON" : "OFF");
+            break;
+        case '+': // 增加光照强度
+        case '=':
+            light_intensity += intensity_step;
+            if (light_intensity > 3.0f) light_intensity = 3.0f;
+            printf("Light intensity: %.1f\n", light_intensity);
+            break;
+        case '-': // 减少光照强度
+        case '_':
+            light_intensity -= intensity_step;
+            if (light_intensity < 0.2f) light_intensity = 0.2f;
+            printf("Light intensity: %.1f\n", light_intensity);
+            break;
         case 27: exit(0); // ESC退出
     }
     glutPostRedisplay();
@@ -292,14 +469,17 @@ void handleKeyboard(unsigned char key, int x, int y) {
 
 // ---------------- 特殊键事件 ----------------
 void handleSpecialKey(int key, int x, int y) {
-    float step = 0.1f;
     switch (key) {
-        case GLUT_KEY_UP: lamp_y += step; break;
-        case GLUT_KEY_DOWN: lamp_y -= step; break;
-        case GLUT_KEY_LEFT: lamp_x -= step; break;
-        case GLUT_KEY_RIGHT: lamp_x += step; break;
+        case GLUT_KEY_UP:    camera_angle_x += 5.0f; break;  // 向上看
+        case GLUT_KEY_DOWN:  camera_angle_x -= 5.0f; break;  // 向下看
+        case GLUT_KEY_LEFT:  camera_angle_y -= 5.0f; break;  // 向左看
+        case GLUT_KEY_RIGHT: camera_angle_y += 5.0f; break;  // 向右看
     }
-    restrictLampPosition();
+    
+    // 限制俯仰角在 -89 到 89 度之间
+    if (camera_angle_x > 89.0f) camera_angle_x = 89.0f;
+    if (camera_angle_x < -89.0f) camera_angle_x = -89.0f;
+    
     glutPostRedisplay();
 }
 
@@ -314,35 +494,30 @@ void handleMouse(int button, int state, int x, int y) {
             last_mouse_y = y;
         }
         else if (state == GLUT_UP) {
-            // 计算移动距离
-            int delta_x = x - initial_mouse_x;
-            int delta_y = y - initial_mouse_y;
-            if (abs(delta_x) < clickThreshold && abs(delta_y) < clickThreshold) {
-                // 被认为是点击，切换灯光状态
-                lightOn = !lightOn;
-                glutPostRedisplay();
-            }
             isDragging = 0;
         }
     }
 }
 
-// ---------------- 鼠标移动事件 ----------------
+// 修改鼠标移动事件以移动灯泡
 void handleMotion(int x, int y) {
     if (isDragging) {
-        int delta_x = x - last_mouse_x;
-        int delta_y = y - last_mouse_y;
+        // 计算屏幕坐标的变化
+        float delta_x = (x - last_mouse_x) * 0.01f;
+        float delta_y = (y - last_mouse_y) * 0.01f;
 
-        camera_angle_y += delta_x * sensitivity;
-        camera_angle_x += delta_y * sensitivity;
+        // 根据相机角度调整移动方向
+        float angle = -camera_angle_y * M_PI / 180.0f;
+        float cos_angle = cos(angle);
+        float sin_angle = sin(angle);
+        
+        // 应用旋转变换
+        lamp_x += cos_angle * delta_x - sin_angle * delta_y;
+        lamp_y += sin_angle * delta_x + cos_angle * delta_y;
 
-        // 限制俯仰角在 -89 到 89 度之间，避免翻转
-        if (camera_angle_x > 89.0f) camera_angle_x = 89.0f;
-        if (camera_angle_x < -89.0f) camera_angle_x = -89.0f;
-
+        restrictLampPosition();
         last_mouse_x = x;
         last_mouse_y = y;
-
         glutPostRedisplay();
     }
 }
