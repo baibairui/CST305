@@ -1,16 +1,7 @@
-#include <GLUT/glut.h>  // 修正后的GLUT头文件路径
+#include <GLUT/glut.h>
 #include <cmath>
 #include <cstdio>
-#include <ctime>
-#include <cstring>
-#include <cstdlib>
-#ifdef _WIN32
-    #include <windows.h>
-#elif __APPLE__
-    // macOS-specific includes
-    #include <unistd.h>
-    #include <signal.h>
-#endif
+#include <cstring>  // 添加这一行以使用 strcmp
 
 // ---------------- 全局变量 ----------------
 float lamp_x = 0.0f; // 灯罩在底座上的X坐标
@@ -18,7 +9,7 @@ float lamp_y = 0.0f; // 灯罩在底座上的Y坐标
 
 float base_radius = 2.5f;       // 增大底座半径
 float base_height = 0.3f;       // 增加底座厚度
-float hemisphere_radius = 1.3f; // 增大灯罩半径
+float hemisphere_radius = 1.0f; // 增大灯罩半径
 
 float max_distance = 2.0f; // 最大距离（用于光亮衰减）
 int use_custom_atten = 0;  // 自定义光衰减开关
@@ -45,35 +36,29 @@ const int clickThreshold = 5; // 点击与拖动的阈值
 bool lightOn = false;
 
 // 光照强度相关变量
-float light_intensity = 0.0f;        // 初始光照强度设置为0.0，表示完全关闭
-const float intensity_step = 0.15f;   // 每次调整的步长增加，使变化更平滑
+float light_intensity = 1.0f;     // 光照强度，范围0.0-3.0
+const float intensity_step = 0.2f; // 每次调整的步长增加，使变化更明显
 
-// 光照强度范围
-const float max_light_intensity = 3.0f; // 最大光照强度
-float current_intensity = 0.0f;         // 当前光照强度
-
+float base_light_intensity = 1.5f;     // 基础光照强度
 float min_light_intensity = 0.3f;      // 最小光照强度
 float center_x = 0.0f;                 // 底座中心X坐标
 float center_y = 0.0f;                 // 底座中心Y坐标
+float offsetY = -0.1f;  // 调整按钮向下偏移的量
+// UI按钮相关结构体和变量
+struct Button {
+    float x, y;        // 按钮位置
+    float width;       // 按钮宽度
+    float height;      // 按钮高度
+    const char* text;  // 按钮文字
+    bool isPressed;    // 是否被按下
+};
 
-// 闹钟相关变量
-struct AlarmTime {
-    int hour;
-    int minute;
-    int second;
-    bool isSet;
-} alarmTime = {0, 0, 0, false}; // 初始为未设置
-
-bool fadeInStarted = false;
-bool alarmTriggered = false;
-const int fadeInDuration = 15; // 缓慢亮灯持续时间设置为15秒
-
-float rotation_angle = 0.0f;
-bool rotating = false;
-
-#ifdef __APPLE__
-pid_t alarm_pid = -1; // 全局变量，用于存储子进程的 PID
-#endif
+// 修改按钮数组定义，进一步增大按钮尺寸
+Button buttons[] = {
+    {-0.9f, 0.9f, 0.35f, 0.18f, "Light ON/OFF", false},  // 更大的按钮
+    {-0.5f, 0.9f, 0.25f, 0.18f, "Dimmer -", false},     // 更高的按钮
+    {-0.2f, 0.9f, 0.25f, 0.18f, "Dimmer +", false},
+};
 
 // ---------------- 函数声明 ----------------
 void initLighting();
@@ -92,14 +77,7 @@ void createMenu();
 void menuFunc(int option);
 void display();
 void reshape(int w, int h);
-void checkAlarm();
-void fadeInLight(int value);
-void rotateLamp(int value);
-void playAlarmSound();
-#ifdef __APPLE__
-void stopAlarmSound();
-#endif
-void renderBitmapString(float x, float y, float z, void *font, const char *string);
+void drawButton(const Button& btn);
 
 // ---------------- 初始化光照 ----------------
 void initLighting() {
@@ -151,25 +129,23 @@ void initLighting() {
 void updateLighting() {
     // 计算当前位置到中心的距离
     float distance = sqrt(pow(lamp_x - center_x, 2) + pow(lamp_y - center_y, 2));
-    float max_dist = base_radius - hemisphere_radius;
+    float max_distance = base_radius - hemisphere_radius;  // 最大可移动距离
     
     // 根据距离和开关状态计算光照强度
-    float intensity_factor = 1.0f - (distance / max_dist) * 0.01f; // 根据需求调整比例
+    float intensity_factor = 1.0f - (distance / max_distance) * 0.7f;  // 保留30%的最小强度
+    float current_intensity = base_light_intensity * (min_light_intensity + (1.0f - min_light_intensity) * intensity_factor);
     
-    // 使用 current_intensity 直接作为光照强度
-    float adjusted_intensity = current_intensity * intensity_factor;
+    // 应用用户调整的光照强度
+    current_intensity *= light_intensity;
     
     // 如果灯是关闭的，将强度设为很小的值以模拟环境光
     if (!lightOn) {
-        adjusted_intensity = 0.1f; // 保留微弱的环境光
+        current_intensity = 0.1f;  // 保留微弱的环境光
     }
     
-    // 调试输出
-    printf("updateLighting: current_intensity=%.2f, adjusted_intensity=%.2f\n", current_intensity, adjusted_intensity);
-    
     // 应用光照强度
-    GLfloat ambient0[] = {0.4f * adjusted_intensity, 0.4f * adjusted_intensity, 0.4f * adjusted_intensity, 1.0f};
-    GLfloat diffuse0[] = {2.0f * adjusted_intensity, 1.9f * adjusted_intensity, 1.7f * adjusted_intensity, 1.0f};
+    GLfloat ambient0[] = {0.4f * current_intensity, 0.4f * current_intensity, 0.4f * current_intensity, 1.0f};
+    GLfloat diffuse0[] = {2.0f * current_intensity, 1.9f * current_intensity, 1.7f * current_intensity, 1.0f};
     
     // 更新光源位置
     float scale_z = 0.6f;
@@ -221,15 +197,14 @@ void drawBase() {
     glPopMatrix();
 }
 
-// ---------------- 计算当前亮度 ----------------
+// ---------------- 绘制灯罩（改进版） ----------------
 float calculateCurrentBrightness() {
     float distance = sqrt(pow(lamp_x - center_x, 2) + pow(lamp_y - center_y, 2));
-    float max_dist = base_radius - hemisphere_radius;
-    float intensity_factor = 1.0f - (distance / max_dist) * 0.01f; // 保留较小的调整比例
+    float max_distance = base_radius - hemisphere_radius;
+    float intensity_factor = 1.0f - (distance / max_distance) * 0.7f;  // 保留30%的最小强度
     return min_light_intensity + (1.0f - min_light_intensity) * intensity_factor;
 }
 
-// ---------------- 绘制灯罩（改进版） ----------------
 void drawLampCover() {
     glPushMatrix();
     
@@ -315,14 +290,13 @@ void drawLampCover() {
     if (lightOn) {
         float brightness = calculateCurrentBrightness();
         GLfloat bottom_emission[] = {
-            0.3f * brightness,  // 稍微减弱底部的发光强度
+            0.3f * brightness,
             0.3f * brightness,
             0.25f * brightness,
             0.2f
         };
         glMaterialfv(GL_FRONT, GL_EMISSION, bottom_emission);
     } else {
-        // 使用已定义的 no_emission
         glMaterialfv(GL_FRONT, GL_EMISSION, no_emission);
     }
     
@@ -330,10 +304,10 @@ void drawLampCover() {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     
-    // 绘制圆盘
-    quad = gluNewQuadric();
-    gluDisk(quad, 0.0f, hemisphere_radius, 50, 50);
-    gluDeleteQuadric(quad);
+    // 绘制圆盘（使用新的quad变量名）
+    GLUquadric *bottomQuad = gluNewQuadric();
+    gluDisk(bottomQuad, 0.0f, hemisphere_radius, 50, 50);
+    gluDeleteQuadric(bottomQuad);
     
     // 重置发光属性（使用已定义的 no_emission）
     glMaterialfv(GL_FRONT, GL_EMISSION, no_emission);
@@ -389,12 +363,11 @@ void drawLightSource() {
     glutSolidSphere(0.3f, 20, 20);  // 增大中等光晕
     
     glMaterialfv(GL_FRONT, GL_EMISSION, soft_emissive);
-    glutSolidSphere(0.4f, 20, 20);  // 增大外层光晕
+    glutSolidSphere(0.4f, 20, 20);  // 墛大外层光晕
     
     glDisable(GL_BLEND);
     gluDeleteQuadric(quad);
     
-    // 重置发光
     GLfloat no_emission[] = {0.0f, 0.0f, 0.0f, 1.0f};
     glMaterialfv(GL_FRONT, GL_EMISSION, no_emission);
     
@@ -447,20 +420,12 @@ void updateCamera() {
     camera_z = camera_distance * cos(rad_x) * cos(rad_y);
 }
 
-// ---------------- 渲染位图字符串 ----------------
-void renderBitmapString(float x, float y, float z, void *font, const char *string) {
-    const char *c;
-    glRasterPos3f(x, y, z);
-    for (c = string; *c != '\0'; c++) {
-        glutBitmapCharacter(font, *c);
-    }
-}
-
 // ---------------- 显示回调 ----------------
 void display() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glLoadIdentity();
 
+    // 绘制3D场景
     updateCamera(); // 更新摄像机位置
 
     // 计算灯罩中心位置
@@ -482,57 +447,26 @@ void display() {
     // 最后绘制透明的灯罩
     drawLampCover();
 
-    // ---------------- 渲染2D文本覆盖层 ----------------
-    // 保存当前投影和模型视图矩阵
+    // 切换到正交投影来绘制UI
     glMatrixMode(GL_PROJECTION);
     glPushMatrix();
     glLoadIdentity();
-    int windowWidth = glutGet(GLUT_WINDOW_WIDTH);
-    int windowHeight = glutGet(GLUT_WINDOW_HEIGHT);
-    gluOrtho2D(0, windowWidth, 0, windowHeight); // 设置正交投影匹配窗口大小
-
+    gluOrtho2D(-1.0, 1.0, -1.0, 1.0);
+    
     glMatrixMode(GL_MODELVIEW);
     glPushMatrix();
     glLoadIdentity();
 
-    // 禁用光照和深度测试以正确显示文本
-    glDisable(GL_LIGHTING);
-    glDisable(GL_DEPTH_TEST);
-
-    // 设置文本颜色
-    glColor3f(1.0f, 1.0f, 1.0f); // 白色
-
-    // 获取当前时间
-    time_t now = time(0);
-    struct tm *local_time = localtime(&now);
-    char currentTimeStr[9];
-    snprintf(currentTimeStr, sizeof(currentTimeStr), "%02d:%02d:%02d", local_time->tm_hour, local_time->tm_min, local_time->tm_sec);
-
-    // 获取闹钟时间
-    char alarmTimeStr[9]; // 增加缓冲区大小
-    if (alarmTime.isSet) {
-        snprintf(alarmTimeStr, sizeof(alarmTimeStr), "%02d:%02d:%02d", alarmTime.hour, alarmTime.minute, alarmTime.second);
-    } else {
-        strcpy(alarmTimeStr, "Not Set"); // "Not Set" 7字符 + 1 = 8, buffer size为9
+    // 绘制所有按钮
+    for (const Button& btn : buttons) {
+        drawButton(btn);
     }
 
-    // 绘制文字位置（左上角）
-    // 在OpenGL中，坐标原点(0,0)在左下角，y轴向上
-    renderBitmapString(10, windowHeight - 20, 0.0f, GLUT_BITMAP_HELVETICA_18, "Current Time:");
-    renderBitmapString(150, windowHeight - 20, 0.0f, GLUT_BITMAP_HELVETICA_18, currentTimeStr);
-
-    renderBitmapString(10, windowHeight - 50, 0.0f, GLUT_BITMAP_HELVETICA_18, "Alarm Time:");
-    renderBitmapString(150, windowHeight - 50, 0.0f, GLUT_BITMAP_HELVETICA_18, alarmTimeStr);
-
-    // 重新启用光照和深度测试
-    glEnable(GL_LIGHTING);
-    glEnable(GL_DEPTH_TEST);
-
-    // 恢复投影和模型视图矩阵
-    glPopMatrix();
+    // 恢复投影矩阵
     glMatrixMode(GL_PROJECTION);
     glPopMatrix();
     glMatrixMode(GL_MODELVIEW);
+    glPopMatrix();
 
     glutSwapBuffers();
 }
@@ -552,46 +486,24 @@ void handleKeyboard(unsigned char key, int x, int y) {
     switch (key) {
         case 'o': // 切换灯光状态
         case 'O':
-            if (!fadeInStarted) { // 防止在淡入过程中切换灯光
-                lightOn = !lightOn;
-                printf("Light is %s\n", lightOn ? "ON" : "OFF");
-                glutPostRedisplay();
-            }
+            lightOn = !lightOn;
+            printf("Light is %s\n", lightOn ? "ON" : "OFF");
             break;
         case '+': // 增加光照强度
         case '=':
-            if (!fadeInStarted) { // 防止在淡入过程中调整强度
-                light_intensity += intensity_step;
-                if (light_intensity > max_light_intensity) light_intensity = max_light_intensity;
-                current_intensity = min_light_intensity + (max_light_intensity - min_light_intensity) * light_intensity;
-                printf("Light intensity: %.2f\n", light_intensity);
-                glutPostRedisplay();
-            }
+            light_intensity += intensity_step;
+            if (light_intensity > 3.0f) light_intensity = 3.0f;
+            printf("Light intensity: %.1f\n", light_intensity);
             break;
         case '-': // 减少光照强度
         case '_':
-            if (!fadeInStarted) { // 防止在淡入过程中调整强度
-                light_intensity -= intensity_step;
-                if (light_intensity < 0.0f) light_intensity = 0.0f;
-                current_intensity = min_light_intensity + (max_light_intensity - min_light_intensity) * light_intensity;
-                printf("Light intensity: %.2f\n", light_intensity);
-                glutPostRedisplay();
-            }
+            light_intensity -= intensity_step;
+            if (light_intensity < 0.2f) light_intensity = 0.2f;
+            printf("Light intensity: %.1f\n", light_intensity);
             break;
-        case 'r': // 重置视角
-        case 'R':
-            camera_distance = 5.0f;
-            camera_angle_x = 20.0f;
-            camera_angle_y = -30.0f;
-            printf("Camera reset to default position.\n");
-            glutPostRedisplay();
-            break;
-        case 27: // ESC退出
-            #ifdef __APPLE__
-                stopAlarmSound(); // 停止音频播放
-            #endif
-            exit(0);
+        case 27: exit(0); // ESC退出
     }
+    glutPostRedisplay();
 }
 
 // ---------------- 特殊键事件 ----------------
@@ -614,30 +526,51 @@ void handleSpecialKey(int key, int x, int y) {
 void handleMouse(int button, int state, int x, int y) {
     if (button == GLUT_LEFT_BUTTON) {
         if (state == GLUT_DOWN) {
+            // 转换屏幕坐标到正交投影坐标
+            float ortho_x = (2.0f * x / glutGet(GLUT_WINDOW_WIDTH)) - 1.0f;
+            float ortho_y = 1.0f - (2.0f * y / glutGet(GLUT_WINDOW_HEIGHT));
+            
+            // 检查是否点击了按钮，需要考虑偏移量
+            for (Button& btn : buttons) {
+                float adjustedY = btn.y + offsetY;  // 使用相同的偏移量
+                if (ortho_x >= btn.x && ortho_x <= btn.x + btn.width &&
+                    ortho_y >= adjustedY && ortho_y <= adjustedY + btn.height) {
+                    btn.isPressed = true;
+                    
+                    // 按钮功能处理保持不变
+                    if (strcmp(btn.text, "Light ON/OFF") == 0) {
+                        lightOn = !lightOn;
+                    } else if (strcmp(btn.text, "Dimmer +") == 0) {
+                        light_intensity += intensity_step;
+                        if (light_intensity > 3.0f) light_intensity = 3.0f;
+                    } else if (strcmp(btn.text, "Dimmer -") == 0) {
+                        light_intensity -= intensity_step;
+                        if (light_intensity < 0.2f) light_intensity = 0.2f;
+                    }
+                    
+                    glutPostRedisplay();
+                    return;
+                }
+            }
+            
+            // 如果没有点击按钮，处理灯罩拖动
             isDragging = 1;
             initial_mouse_x = x;
             initial_mouse_y = y;
             last_mouse_x = x;
             last_mouse_y = y;
-        }
-        else if (state == GLUT_UP) {
-            // 计算移动距离
-            int delta_x = x - initial_mouse_x;
-            int delta_y = y - initial_mouse_y;
-            if (abs(delta_x) < clickThreshold && abs(delta_y) < clickThreshold) {
-                // 被认为是点击，切换灯光状态
-                if (!fadeInStarted) { // 防止在淡入过程中切换灯光
-                    lightOn = !lightOn;
-                    printf("Light is %s\n", lightOn ? "ON" : "OFF");
-                    glutPostRedisplay();
-                }
-            }
+        } else if (state == GLUT_UP) {
             isDragging = 0;
+            // 重置所有按钮状态
+            for (Button& btn : buttons) {
+                btn.isPressed = false;
+            }
+            glutPostRedisplay();
         }
     }
 }
 
-// ---------------- 鼠标移动事件 ----------------
+// 修改鼠标移动事件以移动灯泡
 void handleMotion(int x, int y) {
     if (isDragging) {
         // 计算屏幕坐标的变化
@@ -665,12 +598,7 @@ void menuFunc(int option) {
     switch (option) {
         case 1: use_custom_atten = 0; break;
         case 2: use_custom_atten = 1; break;
-        case 3: 
-            #ifdef __APPLE__
-                stopAlarmSound(); // 停止音频播放
-            #endif
-            exit(0); 
-            break;
+        case 3: exit(0); break;
     }
     glutPostRedisplay();
 }
@@ -683,189 +611,100 @@ void createMenu() {
     glutAttachMenu(GLUT_RIGHT_BUTTON);
 }
 
-// ---------------- 检查闹钟 ----------------
-void checkAlarm() {
-    if (!alarmTime.isSet || alarmTriggered) return;
-    
-    time_t now = time(0);
-    struct tm *local_time = localtime(&now);
-    
-    // 转换闹钟时间为 time_t
-    struct tm alarm_tm = *local_time;
-    alarm_tm.tm_hour = alarmTime.hour;
-    alarm_tm.tm_min = alarmTime.minute;
-    alarm_tm.tm_sec = alarmTime.second;
-    time_t alarm_time_t = mktime(&alarm_tm);
-    
-    // 获取当前时间的 time_t
-    time_t current_time_t = now;
-    
-    // 检查是否达到闹钟时间
-    if (difftime(current_time_t, alarm_time_t) >= 0) {
-        alarmTriggered = true;
-        printf("Alarm Triggered!\n");
-        // 确保光照强度达到最大
-        light_intensity = max_light_intensity;
-        current_intensity = max_light_intensity;
-        // 开始旋转动画（如果尚未开始）
-        if (!rotating) {
-            rotating = true;
-            glutTimerFunc(0, rotateLamp, 0);
-        }
-        // 播放闹钟音
-        playAlarmSound();
-    }
-    
-    // 检查是否到达缓慢亮灯的开始时间（闹钟前fadeInDuration秒）
-    time_t fade_in_time = alarm_time_t - fadeInDuration;
-    if (difftime(current_time_t, fade_in_time) >= 0 && !fadeInStarted && !alarmTriggered) {
-        fadeInStarted = true;
-        lightOn = true; // 开启灯光，以便光照强度变化生效
-        light_intensity = 0.0f; // 重置光照强度
-        current_intensity = 0.0f; // 重置当前亮度
-        printf("Fade-in started.\n");
-        // 开始旋转
-        rotating = true;
-        glutTimerFunc(0, rotateLamp, 0);
-        // 播放音乐
-        playAlarmSound();
-        // 立即开始淡入
-        glutTimerFunc(0, fadeInLight, 0);
-    }
-}
+void drawButton(const Button& btn) {
+    glPushMatrix();
+    glDisable(GL_LIGHTING);
+    glDisable(GL_DEPTH_TEST);  // 禁用深度测试确保UI始终可见
 
-// ---------------- 渐亮灯光 ----------------
-void fadeInLight(int value) {
-    if (!fadeInStarted) return;
-    
-    light_intensity += intensity_step;
-    if (light_intensity > max_light_intensity) light_intensity = max_light_intensity;
-    
-    current_intensity = min_light_intensity + (max_light_intensity - min_light_intensity) * light_intensity * 0.6;
-    
-    printf("Fading in... light_intensity: %.2f, current_intensity: %.2f\n", light_intensity, current_intensity); // 调试输出
-    glutPostRedisplay();
-    
-    if (light_intensity < max_light_intensity) {
-        glutTimerFunc(1000, fadeInLight, 0); // 每秒增加一次
+    float adjustedY = btn.y + offsetY;  // 调整后的 y 坐标
+
+    // 按钮背景 - 半透明渐变
+    if (btn.isPressed) {
+        glBegin(GL_QUADS);
+        glColor4f(0.2f, 0.2f, 0.4f, 0.8f);  // 顶部颜色
+        glVertex2f(btn.x, adjustedY + btn.height);
+        glVertex2f(btn.x + btn.width, adjustedY + btn.height);
+        glColor4f(0.1f, 0.1f, 0.3f, 0.8f);  // 底部颜色
+        glVertex2f(btn.x + btn.width, adjustedY);
+        glVertex2f(btn.x, adjustedY);
+        glEnd();
     } else {
-        fadeInStarted = false;
-        printf("Fade-in completed.\n");
+        glBegin(GL_QUADS);
+        glColor4f(0.3f, 0.3f, 0.5f, 0.8f);  // 顶部颜色
+        glVertex2f(btn.x, adjustedY + btn.height);
+        glVertex2f(btn.x + btn.width, adjustedY + btn.height);
+        glColor4f(0.2f, 0.2f, 0.4f, 0.8f);  // 底部颜色
+        glVertex2f(btn.x + btn.width, adjustedY);
+        glVertex2f(btn.x, adjustedY);
+        glEnd();
     }
-}
 
-// ---------------- 旋转动画 ----------------
-void rotateLamp(int value) {
-    if (!rotating) return;
-    
-    rotation_angle += 2.0f; // 每次旋转2度
-    if (rotation_angle >= 360.0f) rotation_angle -= 360.0f;
-    
-    // 更新灯罩位置，使其围绕底座旋转
-    float radians = rotation_angle * M_PI / 180.0f;
-    lamp_x = (base_radius - hemisphere_radius) * cos(radians);
-    lamp_y = (base_radius - hemisphere_radius) * sin(radians);
-    
-    // 调试输出
-    printf("Rotating lamp to position: (%.2f, %.2f)\n", lamp_x, lamp_y);
-    
-    glutPostRedisplay();
-    glutTimerFunc(50, rotateLamp, 0); // 每50毫秒旋转一次
-}
+    // 发光边框
+    glLineWidth(2.0f);
+    glColor4f(0.5f, 0.5f, 0.7f, 0.9f);
+    glBegin(GL_LINE_LOOP);
+    glVertex2f(btn.x, adjustedY);
+    glVertex2f(btn.x + btn.width, adjustedY);
+    glVertex2f(btn.x + btn.width, adjustedY + btn.height);
+    glVertex2f(btn.x, adjustedY + btn.height);
+    glEnd();
+    glLineWidth(1.0f);
 
-// ---------------- 播放闹钟音 ----------------
-void playAlarmSound() {
-    #ifdef _WIN32
-        Beep(750, 300); // Windows系统的蜂鸣器
-    #elif __APPLE__
-        if (alarm_pid == -1) { // 确保不会启动多个循环
-            alarm_pid = fork();
-            if (alarm_pid == 0) {
-                // 子进程：无限循环播放音频
-                execlp("sh", "sh", "-c", "while true; do afplay iphone.wav; done", (char *) NULL);
-                // 如果 execlp 失败，退出子进程
-                exit(1);
-            } else if (alarm_pid < 0) {
-                printf("Failed to fork process for alarm sound.\n");
-            }
-        }
-    #else
-        printf("\a"); // Unix-like系统的警报声音
-    #endif
-}
-
-#ifdef __APPLE__
-void stopAlarmSound() {
-    if (alarm_pid > 0) {
-        kill(alarm_pid, SIGTERM); // 发送终止信号
-        alarm_pid = -1;
+    // 文字渲染
+    void* font = GLUT_BITMAP_HELVETICA_18;
+    float scale = 0.0005f;  // 缩放因子调整
+    
+    // 计算文字宽度
+    float text_width = 0.0f;
+    for (const char* c = btn.text; *c != '\0'; c++) {
+        text_width += glutBitmapWidth(font, *c) * scale;
     }
-}
-#endif
+    
+    // 文字位置计算（居中）
+    float text_x = btn.x + (btn.width - text_width) / 2.5f;
+    float text_y = adjustedY + btn.height * 0.5f;  // 文字位置随着按钮调整
 
-// ---------------- 定时检查闹钟 ----------------
-void timerCheck(int value) {
-    checkAlarm();
-    glutPostRedisplay(); // 确保每秒刷新显示
-    glutTimerFunc(1000, timerCheck, 0); // 每秒检查一次
+    // 绘制文字阴影
+    glColor4f(0.0f, 0.0f, 0.0f, 0.7f);
+    glRasterPos2f(text_x, text_y);
+    for (const char* c = btn.text; *c != '\0'; c++) {
+        glutBitmapCharacter(font, *c);
+    }
+
+    // 绘制主文字
+    glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+    glRasterPos2f(text_x, text_y);
+    for (const char* c = btn.text; *c != '\0'; c++) {
+        glutBitmapCharacter(font, *c);
+    }
+
+    // 恢复状态
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_LIGHTING);
+    glDisable(GL_BLEND);
+    glPopMatrix();
 }
 
 // ---------------- 主函数 ----------------
 int main(int argc, char **argv) {
-    // 设置启动时间为当前时间，并设置闹钟时间为启动时间后的20秒
-    // 其中，fadeInDuration=15秒，用于测试
-    // 即，缓慢亮灯将在启动时间后的5秒开始，持续15秒，最终在启动时间后的20秒触发闹钟
-    time_t start_time = time(0);
-    struct tm *start_tm = localtime(&start_time);
-    
-    // 设置闹钟时间为启动时间后的20秒
-    alarmTime.hour = start_tm->tm_hour;
-    alarmTime.minute = start_tm->tm_min;
-    alarmTime.second = start_tm->tm_sec + 20;
-    
-    // 处理秒溢出
-    if (alarmTime.second >= 60) {
-        alarmTime.minute += alarmTime.second / 60;
-        alarmTime.second %= 60;
-    }
-    
-    // 处理分钟溢出
-    if (alarmTime.minute >= 60) {
-        alarmTime.hour += alarmTime.minute / 60;
-        alarmTime.minute %= 60;
-    }
-    
-    // 处理小时溢出
-    if (alarmTime.hour >= 24) {
-        alarmTime.hour %= 24;
-    }
-    
-    alarmTime.isSet = true;
-    alarmTriggered = false;
-    
-    printf("Alarm set to %02d:%02d:%02d\n", alarmTime.hour, alarmTime.minute, alarmTime.second);
-    
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH);
     glutInitWindowSize(800, 600);
-    glutCreateWindow("Interactive Smart Lamp with Alarm");
-    
+    glutCreateWindow("Interactive Smart Lamp");
+
     initLighting();
-    
+
     glutDisplayFunc(display);
     glutReshapeFunc(reshape);
     glutKeyboardFunc(handleKeyboard);
     glutSpecialFunc(handleSpecialKey);
-    
+
     // 注册鼠标事件回调
     glutMouseFunc(handleMouse);
     glutMotionFunc(handleMotion);
-    
+
     createMenu();
-    
-    // 设置定时器检查闹钟
-    glutTimerFunc(1000, timerCheck, 0);
-    
+
     glutMainLoop();
     return 0;
 }
