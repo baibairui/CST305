@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "*.md": "markdown",
+        "*.cpp": "cpp",
+        "*.tex": "latex",
+        "cstdlib": "cpp"
+    }
+}

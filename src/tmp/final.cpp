@@ -4,8 +4,6 @@
 #include <ctime>
 #include <cstring>
 #include <cstdlib>
-#include <vector>
-
 #ifdef _WIN32
 #include <windows.h>
 #elif __APPLE__
@@ -47,7 +45,7 @@ const int clickThreshold = 5; // 点击与拖动的阈值
 bool lightOn = false;
 
 // 光照强度相关变量
-float light_intensity = 0.0f;       // 初始光照强度设置为0.0，表示完全关闭
+float light_intensity = 1.0f;       // 初始光照强度设置为0.0，表示完全关闭
 const float intensity_step = 0.15f; // 每次调整的步长增加，使变化更平滑
 
 // 光照强度范围
@@ -58,37 +56,6 @@ float min_light_intensity = 0.3f; // 最小光照强度
 float center_x = 0.0f;            // 底座中心X坐标
 float center_y = 0.0f;            // 底座中心Y坐标
 float offsetY = -0.1f;            // 调整按钮向下偏移的量
-
-// ---------------- 粒子效果相关 ----------------
-// 粒子结构体
-struct Particle {
-    float x, y, z;    // 位置
-    float vx, vy, vz; // 速度
-    float life;       // 生命周期
-    float r, g, b;    // 颜色
-    float maxLife;    // 最大生命周期属性
-};
-
-// 预定义粒子颜色
-const struct {
-    float r, g, b;
-} ParticleColors[] = {
-    {1.0f, 0.5f, 0.0f},  // 橙色
-    {1.0f, 0.8f, 0.0f},  // 金黄
-    {0.8f, 0.2f, 0.2f},  // 红色
-    {0.9f, 0.6f, 0.3f},  // 暖橙
-    {1.0f, 0.4f, 0.4f},  // 粉红
-    {0.8f, 0.8f, 0.4f},  // 暖黄
-};
-const int NUM_COLORS = sizeof(ParticleColors) / sizeof(ParticleColors[0]);
-std::vector<Particle> particles;
-const int MAX_PARTICLES = 4000;        // 增加粒子数量
-const float PARTICLE_SPEED = 0.08f;  // 粒子移动速度
-
-// 添加全局变量
-const float MIN_LIFE_TIME = 6.0f;  // 最小生命周期（秒）
-const float MAX_LIFE_TIME = 7.0f;  // 最大生命周期（秒）
-const float LIFE_SPEED = 0.0002f;  // 生命周期变化速度
 
 // 闹钟相关变量
 struct AlarmTime
@@ -110,16 +77,8 @@ bool rotating = false;
 pid_t alarm_pid = -1; // 全局变量，用于存储子进程的 PID
 #endif
 
-// ---------------- 模式定义 ----------------
-enum Mode {
-    NORMAL,
-    ALARM,
-    ATMOSPHERE
-};
-
-Mode currentMode = NORMAL; // 初始为Normal模式
 // 在全局变量部分添加模式标志
-// bool isAlarmMode = false; // false 为普通模式，true 为闹钟模式
+bool isAlarmMode = false; // false 为普通模式，true 为闹钟模式
 
 // UI按钮相关结构体和变量
 struct Button
@@ -167,13 +126,6 @@ void renderBitmapString(float x, float y, float z, void *font, const char *strin
 void resetAlarmMode();
 void resetNormalMode();
 void drawButton(const Button &btn);
-// 粒子相关函数
-bool isParticleIntersectingWalls(const Particle& p);
-void initParticle(Particle& p);
-void updateParticles();
-void resetParticles();
-void drawParticles();
-void resetAtmosphereMode();
 
 // ---------------- 初始化光照 ----------------
 void initLighting()
@@ -311,17 +263,14 @@ float calculateCurrentBrightness()
     float intensity_factor = 1.0f - (distance / max_dist) * 0.7f;
     intensity_factor = fmax(intensity_factor, 0.3f); // 保持最小亮度
 
-    // 根据当前模式调整亮度计算
-    switch (currentMode) {
-        case NORMAL:
-            return light_intensity * intensity_factor;
-        case ALARM:
-            return min_light_intensity + (1.0f - min_light_intensity) * intensity_factor;
-        case ATMOSPHERE:
-            return 0.8f * intensity_factor; // 可以根据需要调整
-        default:
-            return 0.0f;
+    // 在普通模式下，直接使用 light_intensity
+    if (!isAlarmMode)
+    {
+        return light_intensity * intensity_factor;
     }
+
+    // 在闹钟模式下保持原有行为
+    return min_light_intensity + (1.0f - min_light_intensity) * intensity_factor;
 }
 
 // ---------------- 绘制灯罩（改进版） ----------------
@@ -329,21 +278,21 @@ void drawLampCover()
 {
     glPushMatrix();
 
-    // 定位到灯罩位置
+    // 计算灯罩中心的z坐标，使其底部与底座平齐
     float scale_z = 0.6f; // Z轴缩放因子，使灯罩更扁
     float lamp_z = hemisphere_radius * scale_z;
     glTranslatef(lamp_x, lamp_y, lamp_z);
 
-    // 设置材质属性
+    // 更透明的灯罩材质
     GLfloat glass_ambient[] = {0.1f, 0.1f, 0.1f, 0.2f};
-    GLfloat glass_diffuse[] = {0.7f, 0.7f, 0.7f, 0.15f};
+    GLfloat glass_diffuse[] = {0.7f, 0.7f, 0.7f, 0.15f}; // 更透明
     GLfloat glass_specular[] = {1.0f, 1.0f, 1.0f, 0.2f};
     GLfloat glass_shininess[] = {128.0f};
 
-    // 根据当前模式调整发光效果
     if (lightOn)
     {
-        float brightness = calculateCurrentBrightness(); // 根据模式计算亮度
+        // 灯亮时的内部发光效果，根据位置调整亮度
+        float brightness = calculateCurrentBrightness();
         GLfloat glass_emission[] = {
             0.4f * brightness,
             0.4f * brightness,
@@ -362,12 +311,30 @@ void drawLampCover()
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    // 绘制灯罩
+    // 绘制内外两层灯罩
+    glScalef(1.0f, 1.0f, scale_z);
+
     GLUquadric *quad = gluNewQuadric();
     gluQuadricNormals(quad, GLU_SMOOTH);
-    gluSphere(quad, hemisphere_radius, 50, 50);
-    gluDeleteQuadric(quad);
 
+    // 外层灯罩
+    gluSphere(quad, hemisphere_radius, 50, 50);
+
+    if (lightOn)
+    {
+        // 内层发光层，同样根据位置调整亮度
+        float brightness = calculateCurrentBrightness();
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+        GLfloat inner_emission[] = {
+            0.6f * brightness,
+            0.6f * brightness,
+            0.5f * brightness,
+            0.4f};
+        glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, inner_emission);
+        gluSphere(quad, hemisphere_radius * 0.95f, 50, 50);
+    }
+
+    gluDeleteQuadric(quad);
     glEnable(GL_CULL_FACE);
     glDisable(GL_BLEND);
 
@@ -415,7 +382,7 @@ void drawLampCover()
     gluDisk(quad, 0.0f, hemisphere_radius, 50, 50);
     gluDeleteQuadric(quad);
 
-    // 重置发光属性
+    // 重置发光属性（使用已定义的 no_emission）
     glMaterialfv(GL_FRONT, GL_EMISSION, no_emission);
 
     glDisable(GL_BLEND);
@@ -529,155 +496,6 @@ void updateCamera()
     camera_y = camera_distance * sin(rad_x);
     camera_z = camera_distance * cos(rad_x) * cos(rad_y);
 }
-// 重置氛围模式相关状态
-void resetAtmosphereMode()
-{
-    // 启用粒子效果
-    resetParticles();
-}
-// 检查粒子是否与墙面相交
-bool isParticleIntersectingWalls(const Particle& p)
-{
-    const float WALL_THRESHOLD = 0.5f; // 增加阈值以适应更大的空间
-
-    // 检测与左墙面的相交 (x = -5.0)
-    if (fabs(p.x + 5.0f) < WALL_THRESHOLD &&
-        p.y >= -5.0f && p.y <= 5.0f &&
-        p.z >= -5.0f && p.z <= 5.0f)
-    {
-        return true;
-    }
-
-    // 检测与后墙面的相交 (y = -5.0)
-    if (fabs(p.y + 5.0f) < WALL_THRESHOLD &&
-        p.x >= -5.0f && p.x <= 5.0f &&
-        p.z >= -5.0f && p.z <= 5.0f)
-    {
-        return true;
-    }
-
-    // 检测与地面的相交 (z = -5.0)
-    if (fabs(p.z + 5.0f) < WALL_THRESHOLD &&
-        p.x >= -5.0f && p.x <= 5.0f &&
-        p.y >= -5.0f && p.y <= 5.0f)
-    {
-        return true;
-    }
-
-    return false;
-}
-
-// 初始化粒子
-void initParticle(Particle& p)
-{
-    // 从光源位置发出
-    p.x = lamp_x;
-    p.y = lamp_y;
-    p.z = 0.0f + hemisphere_radius * 0.6f; // 调整粒子起始高度
-
-    // 随机生成方向向量（球面均匀分布）
-    float theta = (rand() % 360) * M_PI / 180.0f;
-    float phi = (rand() % 360) * M_PI / 180.0f;
-
-    // 计算速度方向
-    p.vx = PARTICLE_SPEED * sin(phi) * cos(theta);
-    p.vy = PARTICLE_SPEED * sin(phi) * sin(theta);
-    p.vz = PARTICLE_SPEED * cos(phi);
-
-    // 为每个粒子随机分配生命周期
-    p.maxLife = MIN_LIFE_TIME + (rand() % 1000) * (MAX_LIFE_TIME - MIN_LIFE_TIME) / 1000.0f;
-    p.life = p.maxLife;
-
-    // 随机选择一个预定义的颜色
-    int colorIndex = rand() % NUM_COLORS;
-    p.r = ParticleColors[colorIndex].r;
-    p.g = ParticleColors[colorIndex].g;
-    p.b = ParticleColors[colorIndex].b;
-    // 添加一些随机变化
-    float variation = (rand() % 20 - 10) / 100.0f; // -0.1 到 0.1 的随机变化
-    p.r = std::min(1.0f, std::max(0.0f, p.r + variation));
-    p.g = std::min(1.0f, std::max(0.0f, p.g + variation));
-    p.b = std::min(1.0f, std::max(0.0f, p.b + variation));
-}
-
-// 更新粒子系统
-void updateParticles()
-{
-    // 确保粒子数量
-    while (particles.size() < MAX_PARTICLES)
-    {
-        Particle p;
-        initParticle(p);
-        particles.push_back(p);
-    }
-
-    // 更新所有粒子
-    for (auto& p : particles)
-    {
-        // 更新位置
-        p.x += p.vx;
-        p.y += p.vy;
-        p.z += p.vz;
-
-        // 更新生命周期
-        p.life -= LIFE_SPEED;
-
-        // 如果生命周期结束，重新初始化粒子
-        if (p.life <= 0.0f ||
-            p.x < -10.0f || p.x > 10.0f ||
-            p.y < -10.0f || p.y > 10.0f ||
-            p.z < -10.0f || p.z > 10.0f)
-        {
-            initParticle(p);
-        }
-    }
-}
-
-// 重置所有粒子到初始状态
-void resetParticles()
-{
-    particles.clear(); // 清除现有粒子
-    // 重新初始化所有粒子
-    for(int i = 0; i < MAX_PARTICLES; i++)
-    {
-        Particle p;
-        initParticle(p);
-        particles.push_back(p);
-    }
-}
-
-// 绘制粒子
-void drawParticles()
-{
-    glPushMatrix();
-    glDisable(GL_LIGHTING);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-
-    glPointSize(5.0f); // 增大点的大小
-
-    glBegin(GL_POINTS);
-    for (const auto& p : particles)
-    {   
-        // printf("p_x:%f,p_y:%f,p_z:%f",p.x,p.y,p.z);
-        // 增加亮度，使相交点更明显
-        // 只绘制与墙面相交的粒子
-        if (isParticleIntersectingWalls(p))
-        {
-            float brightness = 1.5f;
-            // 使用归一化的生命周期值作为透明度
-            float alpha = p.life / p.maxLife;
-            glColor4f(p.r * brightness, p.g * brightness, p.b * brightness, alpha);
-            glVertex3f(p.x, p.y, p.z);
-        }
-    }
-    glEnd();
-
-    glDisable(GL_BLEND);
-    glEnable(GL_LIGHTING);
-    glPopMatrix();
-}
-
 
 // ---------------- 渲染位图字符串 ----------------
 void renderBitmapString(float x, float y, float z, void *font, const char *string)
@@ -715,17 +533,6 @@ void display()
     drawBase();
     drawLightSource();
     drawLampCover();
-    // 如果是Atmosphere模式且灯光开启，则绘制粒子效果
-    if (currentMode == ATMOSPHERE )
-    {
-        // 绘制粒子效果
-        glPushMatrix();
-        if (!lightOn) {  // 只在灯灭时更新和绘制粒子
-            updateParticles();
-            drawParticles();
-        }
-        glPopMatrix();
-    }
 
     // 2. 绘制2D UI (按钮)
     glMatrixMode(GL_PROJECTION);
@@ -775,8 +582,7 @@ void display()
         strcpy(alarmTimeStr, "Not Set");
     }
 
-    
-    if (currentMode == ALARM)
+    if (isAlarmMode)
     {
         // 绘制背景框
         glEnable(GL_BLEND);
@@ -864,19 +670,6 @@ void display()
     // 显示模式信息
     glColor3f(1.0f, 1.0f, 1.0f);
     char modeStr[20];
-    switch (currentMode) {
-        case NORMAL:
-            strcpy(modeStr, "Mode: Normal");
-            break;
-        case ALARM:
-            strcpy(modeStr, "Mode: Alarm");
-            break;
-        case ATMOSPHERE:
-            strcpy(modeStr, "Mode: Atmosphere");
-            break;
-        default:
-            strcpy(modeStr, "Mode: Unknown");
-    }
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -906,7 +699,7 @@ void display()
     glDisable(GL_LIGHTING);
 
     // 模式文本
-    snprintf(modeStr, sizeof(modeStr), "Mode: %s", modeStr);
+    snprintf(modeStr, sizeof(modeStr), "Mode: %s", isAlarmMode ? "Alarm" : "Normal");
     void *font = GLUT_BITMAP_HELVETICA_18;
 
     // 文本位置计算
@@ -983,38 +776,6 @@ void handleKeyboard(unsigned char key, int x, int y)
             glutPostRedisplay();
         }
         break;
-    case 'm': // 快捷键切换模式
-    case 'M':
-        // 切换到下一个模式
-        currentMode = static_cast<Mode>((currentMode + 1) % 3);
-        if (currentMode == ALARM)
-        {
-            resetAlarmMode();
-        }
-        else if (currentMode == NORMAL)
-        {
-            resetNormalMode();
-        }
-        else if (currentMode == ATMOSPHERE)
-        {
-            resetAtmosphereMode();
-        }
-        printf("Switched to ");
-        switch (currentMode) {
-            case NORMAL:
-                printf("Normal mode.\n");
-                break;
-            case ALARM:
-                printf("Alarm mode.\n");
-                break;
-            case ATMOSPHERE:
-                printf("Atmosphere mode.\n");
-                break;
-            default:
-                printf("Unknown mode.\n");
-        }
-        glutPostRedisplay();
-        break;
     case 'r': // 重置视角
     case 'R':
         camera_distance = 5.0f;
@@ -1029,39 +790,6 @@ void handleKeyboard(unsigned char key, int x, int y)
 #endif
         exit(0);
     }
-}
-void init() {
-    glClearColor(0.0, 0.0, 0.0, 1.0);
-    glEnable(GL_DEPTH_TEST);
-    
-    // 启用光照
-    glEnable(GL_LIGHTING);
-    glEnable(GL_LIGHT0);
-    glShadeModel(GL_SMOOTH);
-    
-    glViewport(100, 100, 600, 400);
-    
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    glOrtho(-10.0, 10.0, -10.0, 10.0, -10.0, 10.0);  // 修改正交投影范围
-    
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
-    // 在这里设置固定的视角
-    glRotatef(30.0f, 1.0f, 0.0f, 0.0f); // 绕X轴旋转30度
-    glRotatef(-45.0f, 0.0f, 1.0f, 0.0f); // 绕Y轴旋转45度
-
-    // 设置点的大小
-    glPointSize(3.0f);
-    
-    // 设置光照参数
-    GLfloat light_position[] = {-4.0f, -4.0f, -4.0f, 1.0f};
-    GLfloat light_ambient[] = {0.2f, 0.2f, 0.2f, 1.0f};
-    GLfloat light_diffuse[] = {1.0f, 0.8f, 0.6f, 1.0f};
-    
-    glLightfv(GL_LIGHT0, GL_POSITION, light_position);
-    glLightfv(GL_LIGHT0, GL_AMBIENT, light_ambient);
-    glLightfv(GL_LIGHT0, GL_DIFFUSE, light_diffuse);
 }
 
 // ---------------- 特殊键事件 ----------------
@@ -1115,7 +843,7 @@ void handleMouse(int button, int state, int x, int y)
                     if (strcmp(btn.text, "Light ON/OFF") == 0)
                     {
                         lightOn = !lightOn;
-                        if (currentMode == ALARM)
+                        if (!isAlarmMode)
                         {
                             // 在普通模式下，开灯时恢复之前的强度
                             current_intensity = lightOn ? light_intensity : 0.0f;
@@ -1127,7 +855,7 @@ void handleMouse(int button, int state, int x, int y)
                         light_intensity += intensity_step;
                         if (light_intensity > max_light_intensity)
                             light_intensity = max_light_intensity;
-                        if (currentMode == ALARM)
+                        if (!isAlarmMode)
                         {
                             current_intensity = light_intensity;
                         }
@@ -1137,42 +865,25 @@ void handleMouse(int button, int state, int x, int y)
                         light_intensity -= intensity_step;
                         if (light_intensity < 0.2f)
                             light_intensity = 0.2f;
-                        if (currentMode == ALARM)
+                        if (!isAlarmMode)
                         {
                             current_intensity = light_intensity;
                         }
                     }
                     else if (strcmp(btn.text, "Mode Switch") == 0)
                     {
-                        // 切换到下一个模式
-                        currentMode = static_cast<Mode>((currentMode + 1) % 3);
-                        if (currentMode == ALARM)
+                        isAlarmMode = !isAlarmMode;
+                        if (isAlarmMode)
                         {
                             resetAlarmMode();
                         }
-                        else if (currentMode == NORMAL)
+                        else
                         {
                             resetNormalMode();
                         }
-                        else if (currentMode == ATMOSPHERE)
-                        {
-                            resetAtmosphereMode();
-                        }
-                        printf("Switched to ");
-                        switch (currentMode) {
-                            case NORMAL:
-                                printf("Normal mode.\n");
-                                break;
-                            case ALARM:
-                                printf("Alarm mode.\n");
-                                break;
-                            case ATMOSPHERE:
-                                printf("Atmosphere mode.\n");
-                                break;
-                            default:
-                                printf("Unknown mode.\n");
-                        }
                     }
+                    glutPostRedisplay();
+                    return;
                 }
             }
 
@@ -1395,7 +1106,7 @@ void stopAlarmSound()
 // ---------------- 定时检查闹钟 ----------------
 void timerCheck(int value)
 {
-    if (currentMode == ALARM)
+    if (isAlarmMode)
     {
         checkAlarm();
     }
@@ -1542,9 +1253,7 @@ void drawButton(const Button &btn)
     glDisable(GL_BLEND);
     glPopMatrix();
 }
-void idle() {
-    glutPostRedisplay();
-}
+
 // ---------------- 主函数 ----------------
 int main(int argc, char **argv)
 {
@@ -1604,8 +1313,7 @@ int main(int argc, char **argv)
 
     // 设置定时器检查闹钟
     glutTimerFunc(1000, timerCheck, 0);
-    init();
-    glutIdleFunc(idle);
+
     glutMainLoop();
     return 0;
 }
