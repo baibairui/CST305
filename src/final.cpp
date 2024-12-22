@@ -1,4 +1,4 @@
-#include <GL/glut.h> // 修正后的GLUT头文件路径
+#include <GLUT/glut.h> // 修正后的GLUT头文件路径
 #include <cmath>
 #include <cstdio>
 #include <ctime>
@@ -161,6 +161,8 @@ void handleSpecialKey(int key, int x, int y);
 void createMenu();
 void menuFunc(int option);
 void display();
+GLuint loadTexture(const char* filename);
+void loadTextures();
 void reshape(int w, int h);
 void checkAlarm();
 void fadeInLight(int value);
@@ -192,7 +194,7 @@ void initLighting()
     glColorMaterial(GL_FRONT, GL_AMBIENT_AND_DIFFUSE);
 
     // 设置 GL_LIGHT0 的属性（主光源）
-    GLfloat ambient0[] = {0.5f, 0.45f, 0.4f, 1.0f};  // 偏暖的环境光
+    GLfloat ambient0[] = {0.7f, 0.7f, 0.7f, 1.0f};  // 偏暖的环境光
     GLfloat diffuse0[] = {2.0f, 1.8f, 1.6f, 1.0f};   // 偏黄的漫反射光
     GLfloat specular0[] = {1.0f, 0.95f, 0.9f, 1.0f}; // 略微发黄的高光
     glLightfv(GL_LIGHT0, GL_AMBIENT, ambient0);
@@ -253,9 +255,10 @@ void updateLighting()
     GLfloat ambient0[] = {0.4f * adjusted_intensity, 0.4f * adjusted_intensity, 0.4f * adjusted_intensity, 1.0f};
     GLfloat diffuse0[] = {2.0f * adjusted_intensity, 1.9f * adjusted_intensity, 1.7f * adjusted_intensity, 1.0f};
 
-    // 更新光源位置
-    float scale_z = 0.6f;
-    float lamp_z = hemisphere_radius * scale_z;
+        // 计算光源位置
+    float base_z = -5.0f + base_height;
+    float lamp_z = base_z + hemisphere_radius;
+    
     GLfloat position0[] = {lamp_x, lamp_y, lamp_z, 1.0f};
 
     glLightfv(GL_LIGHT0, GL_POSITION, position0);
@@ -282,10 +285,12 @@ void updateLighting()
 }
 
 // ---------------- 绘制底座 ----------------
-void drawBase()
-{
+void drawBase() {
     glPushMatrix();
-
+    
+    // 将底座放置在地面上 (z = -5.0f)
+    glTranslatef(0.0f, 0.0f, -5.0f);
+    
     // 设置材质属性
     GLfloat mat_ambient[] = {0.3f, 0.3f, 0.3f, 1.0f};
     GLfloat mat_diffuse[] = {0.5f, 0.5f, 0.5f, 1.0f};
@@ -297,12 +302,15 @@ void drawBase()
     glMaterialfv(GL_FRONT, GL_SPECULAR, mat_specular);
     glMaterialfv(GL_FRONT, GL_SHININESS, mat_shininess);
 
-    glColor3f(0.5f, 0.5f, 0.5f); // 灰色底座
-    glTranslatef(0.0f, 0.0f, -base_height / 2);
+    glColor3f(0.5f, 0.5f, 0.5f);
+    
     GLUquadric *quad = gluNewQuadric();
+    // 绘制底座圆柱体
     gluCylinder(quad, base_radius, base_radius, base_height, 50, 50);
+    // 绘制底座顶面
     glTranslatef(0.0f, 0.0f, base_height);
     gluDisk(quad, 0.0f, base_radius, 50, 50);
+    
     gluDeleteQuadric(quad);
     glPopMatrix();
 }
@@ -330,13 +338,14 @@ float calculateCurrentBrightness()
     }
 }
 
-// 绘制灯罩（改进版）
 void drawLampCover() {
     glPushMatrix();
     
-    // 计算灯罩中心的z坐标，使其底部与底座平齐
-    float scale_z = 0.6f; // Z轴缩放因子，使灯罩更扁
-    float lamp_z = hemisphere_radius * scale_z;
+    // 计算灯罩位置：地面(-5.0f) + 底座高度 + 灯罩半径
+    float base_z = -5.0f + base_height;
+    float lamp_z = base_z + hemisphere_radius;
+    
+    // 移动到灯罩位置
     glTranslatef(lamp_x, lamp_y, lamp_z);
     
     // 更透明的灯罩材质
@@ -368,8 +377,6 @@ void drawLampCover() {
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     
     // 绘制内外两层灯罩
-    glScalef(1.0f, 1.0f, scale_z);
-    
     GLUquadric *quad = gluNewQuadric();
     gluQuadricNormals(quad, GLU_SMOOTH);
     
@@ -399,61 +406,20 @@ void drawLampCover() {
     glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, no_emission);
     
     glPopMatrix();
-    
-    // 绘制平底圆盘，使灯罩底部平整并贴合底座
-    glPushMatrix();
-    
-    // 平移到灯罩底部位置（z=0）
-    glTranslatef(lamp_x, lamp_y, 0.0f);
-    
-    // 设置相同的玻璃材质属性
-    glMaterialfv(GL_FRONT, GL_AMBIENT, glass_ambient);
-    glMaterialfv(GL_FRONT, GL_DIFFUSE, glass_diffuse);
-    glMaterialfv(GL_FRONT, GL_SPECULAR, glass_specular);
-    glMaterialfv(GL_FRONT, GL_SHININESS, glass_shininess);
-    
-    // 如果灯是开着的，为底部添加发光效果
-    if (lightOn) {
-        float brightness = calculateCurrentBrightness();
-        GLfloat bottom_emission[] = {
-            0.3f * brightness,  // 稍微减弱底部的发光强度
-            0.3f * brightness,
-            0.25f * brightness,
-            0.2f
-        };
-        glMaterialfv(GL_FRONT, GL_EMISSION, bottom_emission);
-    } else {
-        // 使用已定义的 no_emission
-        glMaterialfv(GL_FRONT, GL_EMISSION, no_emission);
-    }
-    
-    // 启用透明度
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    
-    // 绘制圆盘
-    quad = gluNewQuadric();
-    gluDisk(quad, 0.0f, hemisphere_radius, 50, 50);
-    gluDeleteQuadric(quad);
-    
-    // 重置发光属性（使用已定义的 no_emission）
-    glMaterialfv(GL_FRONT, GL_EMISSION, no_emission);
-    
-    glDisable(GL_BLEND);
-    
-    glPopMatrix();
 }
 
-// 绘制光源（灯泡）
 void drawLightSource() {
     if (!lightOn)
         return;
 
     glPushMatrix();
-    float scale_z = 0.6f;
-    float lamp_z = hemisphere_radius * scale_z;
+    
+    // 计算光源位置：与灯罩位置相同
+    float base_z = -5.0f + base_height;
+    float lamp_z = base_z + hemisphere_radius;
+    
     glTranslatef(lamp_x, lamp_y, lamp_z);
-
+    
     // 计算当前亮度
     float brightness = calculateCurrentBrightness() * light_intensity;
 
@@ -500,7 +466,7 @@ void drawLightSource() {
     glPopMatrix();
 }
 
-// 修改后的绘制地面和墙壁函数，应用纹理
+/// 修改后的绘制地面和墙壁函数，应用纹理
 void drawGround() {
     glPushMatrix();
     
@@ -522,10 +488,10 @@ void drawGround() {
     glColor3f(1.0f, 1.0f, 1.0f); // 使用纯白色以显示纹理颜色
     glBegin(GL_QUADS);
     glNormal3f(0.0f, 0.0f, 1.0f);
-    glTexCoord2f(0.0f, 0.0f); glVertex3f(-5.0f, -5.0f, -5.0f);
-    glTexCoord2f(10.0f, 0.0f); glVertex3f(5.0f, -5.0f, -5.0f);
-    glTexCoord2f(10.0f, 10.0f); glVertex3f(5.0f, 5.0f, -5.0f);
-    glTexCoord2f(0.0f, 10.0f); glVertex3f(-5.0f, 5.0f, -5.0f);
+    glTexCoord2f(0.0f, 0.0f); glVertex3f(-10.0f, -10.0f, -5.0f);
+    glTexCoord2f(10.0f, 0.0f); glVertex3f(10.0f, -10.0f, -5.0f);
+    glTexCoord2f(10.0f, 10.0f); glVertex3f(10.0f, 10.0f, -5.0f);
+    glTexCoord2f(0.0f, 10.0f); glVertex3f(-10.0f, 10.0f, -5.0f);
     glEnd();
     
     glDisable(GL_TEXTURE_2D);
@@ -557,37 +523,20 @@ void drawWalls() {
     // 左墙 (x = -5.0)
     glBegin(GL_QUADS);
     glNormal3f(1.0f, 0.0f, 0.0f); // 法向量指向右侧
-    glTexCoord2f(0.0f, 0.0f); glVertex3f(-5.0f, -5.0f, -5.0f);
-    glTexCoord2f(10.0f, 0.0f); glVertex3f(-5.0f, 5.0f, -5.0f);
-    glTexCoord2f(10.0f, 10.0f); glVertex3f(-5.0f, 5.0f, 5.0f);
-    glTexCoord2f(0.0f, 10.0f); glVertex3f(-5.0f, -5.0f, 5.0f);
+    glTexCoord2f(0.0f, 0.0f); glVertex3f(-5.0f, -10.0f, -10.0f);
+    glTexCoord2f(10.0f, 0.0f); glVertex3f(-5.0f, 10.0f, -10.0f);
+    glTexCoord2f(10.0f, 10.0f); glVertex3f(-5.0f, 10.0f, 10.0f);
+    glTexCoord2f(0.0f, 10.0f); glVertex3f(-5.0f, -10.0f, 10.0f);
     glEnd();
     
-    // 右墙 (x = 5.0)
-    glBegin(GL_QUADS);
-    glNormal3f(-1.0f, 0.0f, 0.0f); // 法向量指向左侧
-    glTexCoord2f(0.0f, 0.0f); glVertex3f(5.0f, -5.0f, -5.0f);
-    glTexCoord2f(10.0f, 0.0f); glVertex3f(5.0f, 5.0f, -5.0f);
-    glTexCoord2f(10.0f, 10.0f); glVertex3f(5.0f, 5.0f, 5.0f);
-    glTexCoord2f(0.0f, 10.0f); glVertex3f(5.0f, -5.0f, 5.0f);
-    glEnd();
-    
-    // 后墙 (y = -5.0)
-    glBegin(GL_QUADS);
-    glNormal3f(0.0f, 1.0f, 0.0f); // 法向量指向前方
-    glTexCoord2f(0.0f, 0.0f); glVertex3f(-5.0f, -5.0f, -5.0f);
-    glTexCoord2f(10.0f, 0.0f); glVertex3f(5.0f, -5.0f, -5.0f);
-    glTexCoord2f(10.0f, 10.0f); glVertex3f(5.0f, -5.0f, 5.0f);
-    glTexCoord2f(0.0f, 10.0f); glVertex3f(-5.0f, -5.0f, 5.0f);
-    glEnd();
     
     // 前墙 (y = 5.0)
     glBegin(GL_QUADS);
     glNormal3f(0.0f, -1.0f, 0.0f); // 法向量指向后方
-    glTexCoord2f(0.0f, 0.0f); glVertex3f(-5.0f, 5.0f, -5.0f);
-    glTexCoord2f(10.0f, 0.0f); glVertex3f(5.0f, 5.0f, -5.0f);
-    glTexCoord2f(10.0f, 10.0f); glVertex3f(5.0f, 5.0f, 5.0f);
-    glTexCoord2f(0.0f, 10.0f); glVertex3f(-5.0f, 5.0f, 5.0f);
+    glTexCoord2f(0.0f, 0.0f); glVertex3f(-10.0f, 5.0f, -10.0f);
+    glTexCoord2f(10.0f, 0.0f); glVertex3f(10.0f, 5.0f, -10.0f);
+    glTexCoord2f(10.0f, 10.0f); glVertex3f(10.0f, 5.0f, 10.0f);
+    glTexCoord2f(0.0f, 10.0f); glVertex3f(-10.0f, 5.0f, 10.0f);
     glEnd();
     
     glDisable(GL_TEXTURE_2D);
@@ -652,7 +601,7 @@ bool isParticleIntersectingWalls(const Particle& p)
     }
 
     // 检测与后墙面的相交 (y = -5.0)
-    if (fabs(p.y + 5.0f) < WALL_THRESHOLD &&
+    if (fabs(p.y - 5.0f) < WALL_THRESHOLD &&
         p.x >= -5.0f && p.x <= 5.0f &&
         p.z >= -5.0f && p.z <= 5.0f)
     {
@@ -806,9 +755,9 @@ void display()
 
     updateCamera();
     float lamp_z = hemisphere_radius * 0.6f;
-    gluLookAt(camera_x, camera_y, camera_distance,
+    gluLookAt(-camera_x, -camera_y, camera_distance ,
               lamp_x, lamp_y, lamp_z,
-              0.0, 0.0, 1.0);
+              0.0, 0.0, 1.4);
 
     updateLighting();
     drawGround();
@@ -1033,7 +982,58 @@ void display()
     glEnable(GL_LIGHTING);
     glutSwapBuffers();
 }
+// Function to load a texture from file using stb_image
+GLuint loadTexture(const char* filename)
+{
+    int width, height, nrChannels;
+    // Flip images vertically since OpenGL expects 0.0 on y to be bottom
+    stbi_set_flip_vertically_on_load(true);
+    unsigned char *data = stbi_load(filename, &width, &height, &nrChannels, 0);
+    if (!data)
+    {
+        printf("Failed to load texture %s\n", filename);
+        return 0;
+    }
 
+    GLenum format;
+    if (nrChannels == 1)
+        format = GL_RED;
+    else if (nrChannels == 3)
+        format = GL_RGB;
+    else if (nrChannels == 4)
+        format = GL_RGBA;
+    else
+        format = GL_RGB;
+
+    GLuint texture;
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+
+    // Upload texture data
+    glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+    glGenerateMipmap(GL_TEXTURE_2D);
+
+    // Set texture parameters
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);	
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR); // use mipmaps
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    stbi_image_free(data); // free image memory
+
+    return texture;
+}
+void loadTextures()
+{
+    groundTexture = loadTexture("red_wood.png"); // 替换为您的地面纹理文件
+    wallTexture = loadTexture("image.png");     // 替换为您的墙壁纹理文件
+
+    if (groundTexture == 0 || wallTexture == 0)
+    {
+        printf("Error loading textures.\n");
+        exit(1);
+    }
+}
 // ---------------- 窗口重塑回调 ----------------
 void reshape(int w, int h)
 {
@@ -1688,6 +1688,7 @@ int main(int argc, char **argv)
     glutInitWindowSize(800, 600);
     glutCreateWindow("Interactive Smart Lamp with Alarm");
 
+    loadTextures(); // 加载纹理
     initLighting();
 
     glutDisplayFunc(display);
