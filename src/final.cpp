@@ -160,6 +160,7 @@ void handleKeyboard(unsigned char key, int x, int y);
 void handleSpecialKey(int key, int x, int y);
 void createMenu();
 void menuFunc(int option);
+void computeShadowMatrix();
 void display();
 GLuint loadTexture(const char* filename);
 void loadTextures();
@@ -684,6 +685,34 @@ void updateParticles()
         }
     }
 }
+// ---------------- 计算阴影矩阵函数 ----------------
+void computeShadowMatrix(GLfloat shadowMat[4][4], const GLfloat plane[4], const GLfloat lightPos[4])
+{
+    GLfloat dot = plane[0] * lightPos[0] +
+                  plane[1] * lightPos[1] +
+                  plane[2] * lightPos[2] +
+                  plane[3] * lightPos[3];
+    
+    shadowMat[0][0] = dot - lightPos[0] * plane[0];
+    shadowMat[0][1] = 0.0f - lightPos[0] * plane[1];
+    shadowMat[0][2] = 0.0f - lightPos[0] * plane[2];
+    shadowMat[0][3] = 0.0f - lightPos[0] * plane[3];
+    
+    shadowMat[1][0] = 0.0f - lightPos[1] * plane[0];
+    shadowMat[1][1] = dot - lightPos[1] * plane[1];
+    shadowMat[1][2] = 0.0f - lightPos[1] * plane[2];
+    shadowMat[1][3] = 0.0f - lightPos[1] * plane[3];
+    
+    shadowMat[2][0] = 0.0f - lightPos[2] * plane[0];
+    shadowMat[2][1] = 0.0f - lightPos[2] * plane[1];
+    shadowMat[2][2] = dot - lightPos[2] * plane[2];
+    shadowMat[2][3] = 0.0f - lightPos[2] * plane[3];
+    
+    shadowMat[3][0] = 0.0f - lightPos[3] * plane[0];
+    shadowMat[3][1] = 0.0f - lightPos[3] * plane[1];
+    shadowMat[3][2] = 0.0f - lightPos[3] * plane[2];
+    shadowMat[3][3] = dot - lightPos[3] * plane[3];
+}
 
 // 重置所有粒子到初始状态
 void resetParticles()
@@ -741,20 +770,31 @@ void renderBitmapString(float x, float y, float z, void *font, const char *strin
         glutBitmapCharacter(font, *c);
     }
 }
-
+void updateLightPosition()
+{
+    float base_z = -5.0f + base_height;
+    float lamp_z = base_z + hemisphere_radius;
+    // 假设 lamp_x, lamp_y 是根据用户输入或动画更新的
+    GLfloat lightpos[] = {lamp_x, lamp_y, lamp_z, 1.0f};
+    glLightfv(GL_LIGHT0, GL_POSITION, lightpos);
+}
 // ---------------- 显示回调 ----------------
 void display()
 {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    updateLightPosition();
+    
+    // 设置透视投影
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
-    gluPerspective(45.0, (double)glutGet(GLUT_WINDOW_WIDTH) / (double)glutGet(GLUT_WINDOW_HEIGHT), 1.0, 20.0);
+    gluPerspective(45.0, (double)glutGet(GLUT_WINDOW_WIDTH) / (double)glutGet(GLUT_WINDOW_HEIGHT), 1.0, 20.0f);
 
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
 
     updateCamera();
-    float lamp_z = hemisphere_radius * 0.6f;
+    float base_z = -5.0f + base_height;
+    float lamp_z = base_z + hemisphere_radius;
     gluLookAt(-camera_x, -camera_y, camera_distance ,
               lamp_x, lamp_y, lamp_z,
               0.0, 0.0, 1.4);
@@ -765,17 +805,68 @@ void display()
     drawBase();
     drawLightSource();
     drawLampCover();
+    
     // 如果是Atmosphere模式且灯光开启，则绘制粒子效果
     if (currentMode == ATMOSPHERE )
     {
-        // 绘制粒子效果
         glPushMatrix();
-        if (!lightOn) {  // 只在灯灭时更新和绘制粒子
+        if (lightOn) {  // 只在灯开启时更新和绘制粒子
             updateParticles();
             drawParticles();
         }
         glPopMatrix();
     }
+
+    // -------------- 渲染阴影开始 --------------
+    if (lightOn) { // 仅在灯光开启时渲染阴影
+        // 定义地面平面方程: z + 5 = 0 -> A=0, B=0, C=1, D=5
+        GLfloat groundplane[] = {0.0f, 0.0f, 1.0f, 5.0f};
+        // 获取光源位置
+        GLfloat lightpos[] = {lamp_x, lamp_y, lamp_z, 1.0f};
+
+        // 计算投影矩阵
+        GLfloat shadowMat[4][4];
+        computeShadowMatrix(shadowMat, groundplane, lightpos);
+
+        glPushMatrix();
+        glMultMatrixf(&shadowMat[0][0]);
+
+        // 设置阴影颜色为全黑且完全不透明
+        glColor3f(0.0f, 0.0f, 0.0f);
+
+        // 禁用光照和纹理
+        glDisable(GL_LIGHTING);
+        glDisable(GL_TEXTURE_2D);
+
+        // 禁用混合，因为我们希望阴影是完全不透明的
+        glDisable(GL_BLEND);
+
+        // 启用多边形偏移，避免Z-fighting
+        glEnable(GL_POLYGON_OFFSET_FILL);
+        glPolygonOffset(-1.0f, -1.0f); // 根据需要调整偏移值
+
+        // 禁用深度写入，避免阴影影响深度缓冲
+        glDepthMask(GL_FALSE);
+        glDisable(GL_DEPTH_TEST); // 禁用深度测试以防止阴影与地板发生冲突
+
+        // 渲染需要投影的对象，这里是底座和灯罩
+        drawBase();
+        drawLampCover();
+
+        // 禁用多边形偏移
+        glDisable(GL_POLYGON_OFFSET_FILL);
+
+        // 恢复深度写入和渲染状态
+        glDepthMask(GL_TRUE);
+        glEnable(GL_DEPTH_TEST); // 重新启用深度测试
+
+        // 恢复渲染状态
+        glEnable(GL_LIGHTING);
+        glEnable(GL_TEXTURE_2D);
+
+        glPopMatrix();
+    }
+    // -------------- 渲染阴影结束 --------------
 
     // 2. 绘制2D UI (按钮)
     glMatrixMode(GL_PROJECTION);
@@ -825,7 +916,6 @@ void display()
         strcpy(alarmTimeStr, "Not Set");
     }
 
-    
     if (currentMode == ALARM)
     {
         // 绘制背景框
@@ -955,25 +1045,21 @@ void display()
     // 禁用灯光以确保文字颜色
     glDisable(GL_LIGHTING);
 
-    // 模式文本
-    snprintf(modeStr, sizeof(modeStr), "Mode: %s", modeStr);
-    void *font = GLUT_BITMAP_HELVETICA_18;
-
-    // 文本位置计算
-    float text_width = 0;
+    // 文字位置计算
+    float text_width_calc = 0;
     for (const char *c = modeStr; *c != '\0'; c++)
     {
-        text_width += glutBitmapWidth(font, *c);
+        text_width_calc += glutBitmapWidth(GLUT_BITMAP_HELVETICA_18, *c);
     }
-    float text_x = 120 - text_width / 2; // 水平居中 (20 + 200)/2
-    float text_y = 65;                   // 垂直居中
+    float text_x = windowWidth - 220 + (200 - text_width_calc) / 2.0f; // 水平居中
+    float text_y = 65;                   // 垂直位置
 
     // 绘制主文本
     glColor4f(1.0f, 1.0f, 1.0f, 1.0f); // 设置为完全不透明的白色文字
     glRasterPos2f(text_x, text_y);
     for (const char *c = modeStr; *c != '\0'; c++)
     {
-        glutBitmapCharacter(font, *c);
+        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, *c);
     }
 
     // 恢复状态
@@ -982,7 +1068,6 @@ void display()
     glEnable(GL_LIGHTING);
     glutSwapBuffers();
 }
-// Function to load a texture from file using stb_image
 GLuint loadTexture(const char* filename)
 {
     int width, height, nrChannels;
