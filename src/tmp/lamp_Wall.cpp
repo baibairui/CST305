@@ -253,9 +253,10 @@ void updateLighting()
     GLfloat ambient0[] = {0.4f * adjusted_intensity, 0.4f * adjusted_intensity, 0.4f * adjusted_intensity, 1.0f};
     GLfloat diffuse0[] = {2.0f * adjusted_intensity, 1.9f * adjusted_intensity, 1.7f * adjusted_intensity, 1.0f};
 
-    // 更新光源位置
-    float scale_z = 0.6f;
-    float lamp_z = hemisphere_radius * scale_z;
+        // 计算光源位置
+    float base_z = -5.0f + base_height;
+    float lamp_z = base_z + hemisphere_radius;
+    
     GLfloat position0[] = {lamp_x, lamp_y, lamp_z, 1.0f};
 
     glLightfv(GL_LIGHT0, GL_POSITION, position0);
@@ -282,10 +283,12 @@ void updateLighting()
 }
 
 // ---------------- 绘制底座 ----------------
-void drawBase()
-{
+void drawBase() {
     glPushMatrix();
-
+    
+    // 将底座放置在地面上 (z = -5.0f)
+    glTranslatef(0.0f, 0.0f, -5.0f);
+    
     // 设置材质属性
     GLfloat mat_ambient[] = {0.3f, 0.3f, 0.3f, 1.0f};
     GLfloat mat_diffuse[] = {0.5f, 0.5f, 0.5f, 1.0f};
@@ -297,12 +300,15 @@ void drawBase()
     glMaterialfv(GL_FRONT, GL_SPECULAR, mat_specular);
     glMaterialfv(GL_FRONT, GL_SHININESS, mat_shininess);
 
-    glColor3f(0.5f, 0.5f, 0.5f); // 灰色底座
-    glTranslatef(0.0f, 0.0f, -base_height / 2);
+    glColor3f(0.5f, 0.5f, 0.5f);
+    
     GLUquadric *quad = gluNewQuadric();
+    // 绘制底座圆柱体
     gluCylinder(quad, base_radius, base_radius, base_height, 50, 50);
+    // 绘制底座顶面
     glTranslatef(0.0f, 0.0f, base_height);
     gluDisk(quad, 0.0f, base_radius, 50, 50);
+    
     gluDeleteQuadric(quad);
     glPopMatrix();
 }
@@ -330,13 +336,14 @@ float calculateCurrentBrightness()
     }
 }
 
-// 绘制灯罩（改进版）
 void drawLampCover() {
     glPushMatrix();
     
-    // 计算灯罩中心的z坐标，使其底部与底座平齐
-    float scale_z = 0.6f; // Z轴缩放因子，使灯罩更扁
-    float lamp_z = hemisphere_radius * scale_z;
+    // 计算灯罩位置：地面(-5.0f) + 底座高度 + 灯罩半径
+    float base_z = -5.0f + base_height;
+    float lamp_z = base_z + hemisphere_radius;
+    
+    // 移动到灯罩位置
     glTranslatef(lamp_x, lamp_y, lamp_z);
     
     // 更透明的灯罩材质
@@ -368,8 +375,6 @@ void drawLampCover() {
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     
     // 绘制内外两层灯罩
-    glScalef(1.0f, 1.0f, scale_z);
-    
     GLUquadric *quad = gluNewQuadric();
     gluQuadricNormals(quad, GLU_SMOOTH);
     
@@ -399,61 +404,20 @@ void drawLampCover() {
     glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, no_emission);
     
     glPopMatrix();
-    
-    // 绘制平底圆盘，使灯罩底部平整并贴合底座
-    glPushMatrix();
-    
-    // 平移到灯罩底部位置（z=0）
-    glTranslatef(lamp_x, lamp_y, 0.0f);
-    
-    // 设置相同的玻璃材质属性
-    glMaterialfv(GL_FRONT, GL_AMBIENT, glass_ambient);
-    glMaterialfv(GL_FRONT, GL_DIFFUSE, glass_diffuse);
-    glMaterialfv(GL_FRONT, GL_SPECULAR, glass_specular);
-    glMaterialfv(GL_FRONT, GL_SHININESS, glass_shininess);
-    
-    // 如果灯是开着的，为底部添加发光效果
-    if (lightOn) {
-        float brightness = calculateCurrentBrightness();
-        GLfloat bottom_emission[] = {
-            0.3f * brightness,  // 稍微减弱底部的发光强度
-            0.3f * brightness,
-            0.25f * brightness,
-            0.2f
-        };
-        glMaterialfv(GL_FRONT, GL_EMISSION, bottom_emission);
-    } else {
-        // 使用已定义的 no_emission
-        glMaterialfv(GL_FRONT, GL_EMISSION, no_emission);
-    }
-    
-    // 启用透明度
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    
-    // 绘制圆盘
-    quad = gluNewQuadric();
-    gluDisk(quad, 0.0f, hemisphere_radius, 50, 50);
-    gluDeleteQuadric(quad);
-    
-    // 重置发光属性（使用已定义的 no_emission）
-    glMaterialfv(GL_FRONT, GL_EMISSION, no_emission);
-    
-    glDisable(GL_BLEND);
-    
-    glPopMatrix();
 }
 
-// 绘制光源（灯泡）
 void drawLightSource() {
     if (!lightOn)
         return;
 
     glPushMatrix();
-    float scale_z = 0.6f;
-    float lamp_z = hemisphere_radius * scale_z;
+    
+    // 计算光源位置：与灯罩位置相同
+    float base_z = -5.0f + base_height;
+    float lamp_z = base_z + hemisphere_radius;
+    
     glTranslatef(lamp_x, lamp_y, lamp_z);
-
+    
     // 计算当前亮度
     float brightness = calculateCurrentBrightness() * light_intensity;
 
@@ -652,7 +616,7 @@ bool isParticleIntersectingWalls(const Particle& p)
     }
 
     // 检测与后墙面的相交 (y = -5.0)
-    if (fabs(p.y + 5.0f) < WALL_THRESHOLD &&
+    if (fabs(p.y - 5.0f) < WALL_THRESHOLD &&
         p.x >= -5.0f && p.x <= 5.0f &&
         p.z >= -5.0f && p.z <= 5.0f)
     {
@@ -806,7 +770,7 @@ void display()
 
     updateCamera();
     float lamp_z = hemisphere_radius * 0.6f;
-    gluLookAt(camera_x, camera_y, camera_distance,
+    gluLookAt(-camera_x, -camera_y, camera_distance ,
               lamp_x, lamp_y, lamp_z,
               0.0, 0.0, 1.0);
 
