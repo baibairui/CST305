@@ -20,6 +20,11 @@ GLuint groundTexture, wallTexture;
 #endif
 
 // ---------------- 全局变量 ----------------
+// 1. 添加全局变量
+GLfloat shadowMat[16];  // 阴影投影矩阵
+GLfloat groundPlane[] = {0.0f, 0.0f, 1.0f, 5.0f};  // 地面平面方程
+
+
 float lamp_x = 0.0f; // 灯罩在底座上的X坐标
 float lamp_y = 0.0f; // 灯罩在底座上的Y坐标
 
@@ -31,7 +36,7 @@ float max_distance = 2.0f; // 最大距离（用于光亮衰减）
 int use_custom_atten = 0;  // 自定义光衰减开关
 
 // 摄像机参数（基于角度的球面坐标）
-float camera_distance = 5.0f;  // 摄像机与原点的距离
+float camera_distance = 10.0f;  // 摄像机与原点的距离
 float camera_angle_x = 20.0f;  // 绕X轴的旋转角度（俯仰角）
 float camera_angle_y = -30.0f; // 绕Y轴的旋转角度（偏航角）
 
@@ -161,8 +166,6 @@ void handleSpecialKey(int key, int x, int y);
 void createMenu();
 void menuFunc(int option);
 void display();
-GLuint loadTexture(const char* filename);
-void loadTextures();
 void reshape(int w, int h);
 void checkAlarm();
 void fadeInLight(int value);
@@ -183,6 +186,205 @@ void resetParticles();
 void drawParticles();
 void resetAtmosphereMode();
 
+
+// 2. 添加阴影矩阵计算函数
+void calculateShadowMatrix(GLfloat shadowMat[16], GLfloat groundplane[4], GLfloat lightpos[4]) {
+    GLfloat dot;
+    
+    dot = groundplane[0] * lightpos[0] +
+          groundplane[1] * lightpos[1] +
+          groundplane[2] * lightpos[2] +
+          groundplane[3] * lightpos[3];
+
+    shadowMat[0]  = dot - lightpos[0] * groundplane[0];
+    shadowMat[4]  = 0.0f - lightpos[0] * groundplane[1];
+    shadowMat[8]  = 0.0f - lightpos[0] * groundplane[2];
+    shadowMat[12] = 0.0f - lightpos[0] * groundplane[3];
+
+    shadowMat[1]  = 0.0f - lightpos[1] * groundplane[0];
+    shadowMat[5]  = dot - lightpos[1] * groundplane[1];
+    shadowMat[9]  = 0.0f - lightpos[1] * groundplane[2];
+    shadowMat[13] = 0.0f - lightpos[1] * groundplane[3];
+
+    shadowMat[2]  = 0.0f - lightpos[2] * groundplane[0];
+    shadowMat[6]  = 0.0f - lightpos[2] * groundplane[1];
+    shadowMat[10] = dot - lightpos[2] * groundplane[2];
+    shadowMat[14] = 0.0f - lightpos[2] * groundplane[3];
+
+    shadowMat[3]  = 0.0f - lightpos[3] * groundplane[0];
+    shadowMat[7]  = 0.0f - lightpos[3] * groundplane[1];
+    shadowMat[11] = 0.0f - lightpos[3] * groundplane[2];
+    shadowMat[15] = dot - lightpos[3] * groundplane[3];
+}
+// 3. 添加阴影绘制函数
+void drawShadow() {
+    // 更新光源位置
+    float base_z = -5.0f + base_height;
+    float lamp_z = base_z + hemisphere_radius; 
+    GLfloat lightPosition[] = {lamp_x, lamp_y, lamp_z, 1.0f};
+    
+    // 计算阴影矩阵
+    calculateShadowMatrix(shadowMat, groundPlane, lightPosition);
+    // 保存当前深度函数
+    GLint savedDepthFunc;
+    glGetIntegerv(GL_DEPTH_FUNC, &savedDepthFunc);
+    glDisable(GL_LIGHTING);
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    // 修改深度测试函数，避免z-fighting
+    glDepthFunc(GL_LEQUAL);
+    glPushMatrix();
+    // 应用阴影矩阵
+    glMultMatrixf(shadowMat);
+    
+    // 设置阴影颜色（半透明黑色）
+    glColor4f(0.0f, 0.0f, 0.0f, 0.3f);
+    
+    // 1. 绘制灯罩阴影
+    glPushMatrix();
+    glTranslatef(lamp_x, lamp_y, lamp_z);
+    GLUquadric *quad = gluNewQuadric();
+    gluSphere(quad, hemisphere_radius, 50, 50);
+    gluDeleteQuadric(quad);
+    glPopMatrix();
+    
+    // 2. 绘制底座阴影
+    glPushMatrix();
+    glTranslatef(0.0f, 0.0f, -5.0f);
+    quad = gluNewQuadric();
+    gluCylinder(quad, base_radius, base_radius, base_height, 50, 50);
+    gluDeleteQuadric(quad);
+    glPopMatrix();
+    
+    // 3. 绘制正方体阴影
+    glPushMatrix();
+    float cube_size = 0.5f;
+    float cube_x = base_radius - cube_size + 2.0f;
+    float cube_y = 2.0f;
+    float cube_z = -5.0f + base_height;
+    
+    glTranslatef(cube_x, cube_y, cube_z);
+    
+    glBegin(GL_QUADS);
+    // 前面
+    glVertex3f(-cube_size/2, -cube_size/2, cube_size/2);
+    glVertex3f(cube_size/2, -cube_size/2, cube_size/2);
+    glVertex3f(cube_size/2, -cube_size/2, -cube_size/2);
+    glVertex3f(-cube_size/2, -cube_size/2, -cube_size/2);
+    
+    // 后面
+    glVertex3f(-cube_size/2, cube_size/2, -cube_size/2);
+    glVertex3f(cube_size/2, cube_size/2, -cube_size/2);
+    glVertex3f(cube_size/2, cube_size/2, cube_size/2);
+    glVertex3f(-cube_size/2, cube_size/2, cube_size/2);
+    
+    // 顶面
+    glVertex3f(-cube_size/2, -cube_size/2, cube_size/2);
+    glVertex3f(-cube_size/2, cube_size/2, cube_size/2);
+    glVertex3f(cube_size/2, cube_size/2, cube_size/2);
+    glVertex3f(cube_size/2, -cube_size/2, cube_size/2);
+    
+    // 底面
+    glVertex3f(-cube_size/2, -cube_size/2, -cube_size/2);
+    glVertex3f(cube_size/2, -cube_size/2, -cube_size/2);
+    glVertex3f(cube_size/2, cube_size/2, -cube_size/2);
+    glVertex3f(-cube_size/2, cube_size/2, -cube_size/2);
+    
+    // 右面
+    glVertex3f(cube_size/2, -cube_size/2, -cube_size/2);
+    glVertex3f(cube_size/2, -cube_size/2, cube_size/2);
+    glVertex3f(cube_size/2, cube_size/2, cube_size/2);
+    glVertex3f(cube_size/2, cube_size/2, -cube_size/2);
+    
+    // 左面
+    glVertex3f(-cube_size/2, -cube_size/2, -cube_size/2);
+    glVertex3f(-cube_size/2, cube_size/2, -cube_size/2);
+    glVertex3f(-cube_size/2, cube_size/2, cube_size/2);
+    glVertex3f(-cube_size/2, -cube_size/2, cube_size/2);
+    glEnd();
+    glPopMatrix();
+    
+    glPopMatrix();
+    
+    glDepthFunc(savedDepthFunc);
+    glEnable(GL_LIGHTING); 
+    glDisable(GL_BLEND);
+}
+// 添加绘制正方体的函数
+void drawCube() {
+    glPushMatrix();
+    
+    // 设置正方体位置：靠近灯的底座
+    float cube_size = 0.5f; // 正方体大小
+    // 位置在底座边缘附近
+    float cube_x = base_radius - cube_size + 2.0f;
+    float cube_y = 2.0f;
+    float cube_z = -5.0f + base_height; // 与底座顶部齐平
+    
+    glTranslatef(cube_x, cube_y, cube_z);
+    
+    // 设置材质属性
+    GLfloat cube_ambient[] = {0.2f, 0.2f, 0.2f, 1.0f};
+    GLfloat cube_diffuse[] = {0.8f, 0.8f, 0.8f, 1.0f};
+    GLfloat cube_specular[] = {1.0f, 1.0f, 1.0f, 1.0f};
+    GLfloat cube_shininess[] = {100.0f};
+    
+    glMaterialfv(GL_FRONT, GL_AMBIENT, cube_ambient);
+    glMaterialfv(GL_FRONT, GL_DIFFUSE, cube_diffuse);
+    glMaterialfv(GL_FRONT, GL_SPECULAR, cube_specular);
+    glMaterialfv(GL_FRONT, GL_SHININESS, cube_shininess);
+    
+    // 绘制正方体
+    glBegin(GL_QUADS);
+    
+    // 前面
+    glNormal3f(0.0f, -1.0f, 0.0f);
+    glVertex3f(-cube_size/2, -cube_size/2, cube_size/2);
+    glVertex3f(cube_size/2, -cube_size/2, cube_size/2);
+    glVertex3f(cube_size/2, -cube_size/2, -cube_size/2);
+    glVertex3f(-cube_size/2, -cube_size/2, -cube_size/2);
+    
+    // 后面
+    glNormal3f(0.0f, 1.0f, 0.0f);
+    glVertex3f(-cube_size/2, cube_size/2, -cube_size/2);
+    glVertex3f(cube_size/2, cube_size/2, -cube_size/2);
+    glVertex3f(cube_size/2, cube_size/2, cube_size/2);
+    glVertex3f(-cube_size/2, cube_size/2, cube_size/2);
+    
+    // 顶面
+    glNormal3f(0.0f, 0.0f, 1.0f);
+    glVertex3f(-cube_size/2, -cube_size/2, cube_size/2);
+    glVertex3f(-cube_size/2, cube_size/2, cube_size/2);
+    glVertex3f(cube_size/2, cube_size/2, cube_size/2);
+    glVertex3f(cube_size/2, -cube_size/2, cube_size/2);
+    
+    // 底面
+    glNormal3f(0.0f, 0.0f, -1.0f);
+    glVertex3f(-cube_size/2, -cube_size/2, -cube_size/2);
+    glVertex3f(cube_size/2, -cube_size/2, -cube_size/2);
+    glVertex3f(cube_size/2, cube_size/2, -cube_size/2);
+    glVertex3f(-cube_size/2, cube_size/2, -cube_size/2);
+    
+    // 右面
+    glNormal3f(1.0f, 0.0f, 0.0f);
+    glVertex3f(cube_size/2, -cube_size/2, -cube_size/2);
+    glVertex3f(cube_size/2, -cube_size/2, cube_size/2);
+    glVertex3f(cube_size/2, cube_size/2, cube_size/2);
+    glVertex3f(cube_size/2, cube_size/2, -cube_size/2);
+    
+    // 左面
+    glNormal3f(-1.0f, 0.0f, 0.0f);
+    glVertex3f(-cube_size/2, -cube_size/2, -cube_size/2);
+    glVertex3f(-cube_size/2, cube_size/2, -cube_size/2);
+    glVertex3f(-cube_size/2, cube_size/2, cube_size/2);
+    glVertex3f(-cube_size/2, -cube_size/2, cube_size/2);
+    
+    glEnd();
+    
+    glPopMatrix();
+}
+
 // ---------------- 初始化光照 ----------------
 void initLighting()
 {
@@ -194,7 +396,7 @@ void initLighting()
     glColorMaterial(GL_FRONT, GL_AMBIENT_AND_DIFFUSE);
 
     // 设置 GL_LIGHT0 的属性（主光源）
-    GLfloat ambient0[] = {0.7f, 0.7f, 0.7f, 1.0f};  // 偏暖的环境光
+    GLfloat ambient0[] = {0.5f, 0.45f, 0.4f, 1.0f};  // 偏暖的环境光
     GLfloat diffuse0[] = {2.0f, 1.8f, 1.6f, 1.0f};   // 偏黄的漫反射光
     GLfloat specular0[] = {1.0f, 0.95f, 0.9f, 1.0f}; // 略微发黄的高光
     glLightfv(GL_LIGHT0, GL_AMBIENT, ambient0);
@@ -466,7 +668,7 @@ void drawLightSource() {
     glPopMatrix();
 }
 
-/// 修改后的绘制地面和墙壁函数，应用纹理
+// 修改后的绘制地面和墙壁函数，应用纹理
 void drawGround() {
     glPushMatrix();
     
@@ -529,6 +731,7 @@ void drawWalls() {
     glTexCoord2f(0.0f, 10.0f); glVertex3f(-5.0f, -10.0f, 10.0f);
     glEnd();
     
+
     
     // 前墙 (y = 5.0)
     glBegin(GL_QUADS);
@@ -542,8 +745,6 @@ void drawWalls() {
     glDisable(GL_TEXTURE_2D);
     glPopMatrix();
 }
-
-
 
 // ---------------- 限制灯罩位置 ----------------
 void restrictLampPosition()
@@ -730,7 +931,6 @@ void drawParticles()
     glPopMatrix();
 }
 
-
 // ---------------- 渲染位图字符串 ----------------
 void renderBitmapString(float x, float y, float z, void *font, const char *string)
 {
@@ -755,16 +955,18 @@ void display()
 
     updateCamera();
     float lamp_z = hemisphere_radius * 0.6f;
-    gluLookAt(-camera_x, -camera_y, camera_distance ,
+    gluLookAt(-camera_x, -camera_y, camera_distance,
               lamp_x, lamp_y, lamp_z,
-              0.0, 0.0, 1.4);
+              0.0, 0.0, 1.0);
 
     updateLighting();
     drawGround();
     drawWalls();
+    drawShadow();  // 绘制阴影
     drawBase();
     drawLightSource();
     drawLampCover();
+    drawCube(); 
     // 如果是Atmosphere模式且灯光开启，则绘制粒子效果
     if (currentMode == ATMOSPHERE )
     {
@@ -982,58 +1184,7 @@ void display()
     glEnable(GL_LIGHTING);
     glutSwapBuffers();
 }
-// Function to load a texture from file using stb_image
-GLuint loadTexture(const char* filename)
-{
-    int width, height, nrChannels;
-    // Flip images vertically since OpenGL expects 0.0 on y to be bottom
-    stbi_set_flip_vertically_on_load(true);
-    unsigned char *data = stbi_load(filename, &width, &height, &nrChannels, 0);
-    if (!data)
-    {
-        printf("Failed to load texture %s\n", filename);
-        return 0;
-    }
 
-    GLenum format;
-    if (nrChannels == 1)
-        format = GL_RED;
-    else if (nrChannels == 3)
-        format = GL_RGB;
-    else if (nrChannels == 4)
-        format = GL_RGBA;
-    else
-        format = GL_RGB;
-
-    GLuint texture;
-    glGenTextures(1, &texture);
-    glBindTexture(GL_TEXTURE_2D, texture);
-
-    // Upload texture data
-    glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
-    glGenerateMipmap(GL_TEXTURE_2D);
-
-    // Set texture parameters
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);	
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR); // use mipmaps
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-    stbi_image_free(data); // free image memory
-
-    return texture;
-}
-void loadTextures()
-{
-    groundTexture = loadTexture("red_wood.png"); // 替换为您的地面纹理文件
-    wallTexture = loadTexture("image.png");     // 替换为您的墙壁纹理文件
-
-    if (groundTexture == 0 || wallTexture == 0)
-    {
-        printf("Error loading textures.\n");
-        exit(1);
-    }
-}
 // ---------------- 窗口重塑回调 ----------------
 void reshape(int w, int h)
 {
@@ -1688,7 +1839,6 @@ int main(int argc, char **argv)
     glutInitWindowSize(800, 600);
     glutCreateWindow("Interactive Smart Lamp with Alarm");
 
-    loadTextures(); // 加载纹理
     initLighting();
 
     glutDisplayFunc(display);

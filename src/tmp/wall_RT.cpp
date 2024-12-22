@@ -31,7 +31,7 @@ float max_distance = 2.0f; // 最大距离（用于光亮衰减）
 int use_custom_atten = 0;  // 自定义光衰减开关
 
 // 摄像机参数（基于角度的球面坐标）
-float camera_distance = 5.0f;  // 摄像机与原点的距离
+float camera_distance = 10.0f;  // 摄像机与原点的距离
 float camera_angle_x = 20.0f;  // 绕X轴的旋转角度（俯仰角）
 float camera_angle_y = -30.0f; // 绕Y轴的旋转角度（偏航角）
 
@@ -161,8 +161,6 @@ void handleSpecialKey(int key, int x, int y);
 void createMenu();
 void menuFunc(int option);
 void display();
-GLuint loadTexture(const char* filename);
-void loadTextures();
 void reshape(int w, int h);
 void checkAlarm();
 void fadeInLight(int value);
@@ -194,7 +192,7 @@ void initLighting()
     glColorMaterial(GL_FRONT, GL_AMBIENT_AND_DIFFUSE);
 
     // 设置 GL_LIGHT0 的属性（主光源）
-    GLfloat ambient0[] = {0.7f, 0.7f, 0.7f, 1.0f};  // 偏暖的环境光
+    GLfloat ambient0[] = {0.5f, 0.45f, 0.4f, 1.0f};  // 偏暖的环境光
     GLfloat diffuse0[] = {2.0f, 1.8f, 1.6f, 1.0f};   // 偏黄的漫反射光
     GLfloat specular0[] = {1.0f, 0.95f, 0.9f, 1.0f}; // 略微发黄的高光
     glLightfv(GL_LIGHT0, GL_AMBIENT, ambient0);
@@ -466,7 +464,7 @@ void drawLightSource() {
     glPopMatrix();
 }
 
-/// 修改后的绘制地面和墙壁函数，应用纹理
+// 修改后的绘制地面和墙壁函数，应用纹理
 void drawGround() {
     glPushMatrix();
     
@@ -529,6 +527,7 @@ void drawWalls() {
     glTexCoord2f(0.0f, 10.0f); glVertex3f(-5.0f, -10.0f, 10.0f);
     glEnd();
     
+
     
     // 前墙 (y = 5.0)
     glBegin(GL_QUADS);
@@ -542,8 +541,6 @@ void drawWalls() {
     glDisable(GL_TEXTURE_2D);
     glPopMatrix();
 }
-
-
 
 // ---------------- 限制灯罩位置 ----------------
 void restrictLampPosition()
@@ -730,7 +727,6 @@ void drawParticles()
     glPopMatrix();
 }
 
-
 // ---------------- 渲染位图字符串 ----------------
 void renderBitmapString(float x, float y, float z, void *font, const char *string)
 {
@@ -755,9 +751,9 @@ void display()
 
     updateCamera();
     float lamp_z = hemisphere_radius * 0.6f;
-    gluLookAt(-camera_x, -camera_y, camera_distance ,
+    gluLookAt(-camera_x, -camera_y, camera_distance,
               lamp_x, lamp_y, lamp_z,
-              0.0, 0.0, 1.4);
+              0.0, 0.0, 1.0);
 
     updateLighting();
     drawGround();
@@ -982,58 +978,7 @@ void display()
     glEnable(GL_LIGHTING);
     glutSwapBuffers();
 }
-// Function to load a texture from file using stb_image
-GLuint loadTexture(const char* filename)
-{
-    int width, height, nrChannels;
-    // Flip images vertically since OpenGL expects 0.0 on y to be bottom
-    stbi_set_flip_vertically_on_load(true);
-    unsigned char *data = stbi_load(filename, &width, &height, &nrChannels, 0);
-    if (!data)
-    {
-        printf("Failed to load texture %s\n", filename);
-        return 0;
-    }
 
-    GLenum format;
-    if (nrChannels == 1)
-        format = GL_RED;
-    else if (nrChannels == 3)
-        format = GL_RGB;
-    else if (nrChannels == 4)
-        format = GL_RGBA;
-    else
-        format = GL_RGB;
-
-    GLuint texture;
-    glGenTextures(1, &texture);
-    glBindTexture(GL_TEXTURE_2D, texture);
-
-    // Upload texture data
-    glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
-    glGenerateMipmap(GL_TEXTURE_2D);
-
-    // Set texture parameters
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);	
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR); // use mipmaps
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-    stbi_image_free(data); // free image memory
-
-    return texture;
-}
-void loadTextures()
-{
-    groundTexture = loadTexture("red_wood.png"); // 替换为您的地面纹理文件
-    wallTexture = loadTexture("image.png");     // 替换为您的墙壁纹理文件
-
-    if (groundTexture == 0 || wallTexture == 0)
-    {
-        printf("Error loading textures.\n");
-        exit(1);
-    }
-}
 // ---------------- 窗口重塑回调 ----------------
 void reshape(int w, int h)
 {
@@ -1688,7 +1633,6 @@ int main(int argc, char **argv)
     glutInitWindowSize(800, 600);
     glutCreateWindow("Interactive Smart Lamp with Alarm");
 
-    loadTextures(); // 加载纹理
     initLighting();
 
     glutDisplayFunc(display);
