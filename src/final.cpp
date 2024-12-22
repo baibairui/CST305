@@ -150,7 +150,6 @@ void updateLighting();
 void drawBase();
 void drawLampCover();
 void drawLightSource();
-void loadTextures();
 void drawGround();
 void drawWalls();
 void restrictLampPosition();
@@ -499,72 +498,6 @@ void drawLightSource() {
     glMaterialfv(GL_FRONT, GL_EMISSION, no_emission);
 
     glPopMatrix();
-}
-/// 加载纹理函数
-void loadTextures() {
-    stbi_set_flip_vertically_on_load(true); // 如果需要，翻转图像
-
-    int width, height, nrChannels;
-    unsigned char *data = stbi_load("gray_wood.png", &width, &height, &nrChannels, 0);
-    if (data) {
-        glGenTextures(1, &groundTexture);
-        glBindTexture(GL_TEXTURE_2D, groundTexture);
-        
-        // 设置纹理参数
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);	
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        
-        // 根据通道数确定图像格式
-        GLenum format;
-        if (nrChannels == 1)
-            format = GL_RED;
-        else if (nrChannels == 3)
-            format = GL_RGB;
-        else if (nrChannels == 4)
-            format = GL_RGBA;
-        else {
-            format = GL_RGB;
-        }
-        
-        glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
-        glGenerateMipmap(GL_TEXTURE_2D);
-    } else {
-        printf("Failed to load ground texture\n");
-    }
-    stbi_image_free(data);
-
-    // 加载墙壁纹理（假设使用相同的纹理，如果需要不同纹理，请更改文件名）
-    data = stbi_load("gray_wood.png", &width, &height, &nrChannels, 0);
-    if (data) {
-        glGenTextures(1, &wallTexture);
-        glBindTexture(GL_TEXTURE_2D, wallTexture);
-        
-        // 设置纹理参数
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);	
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        
-        // 根据通道数确定图像格式
-        GLenum format;
-        if (nrChannels == 1)
-            format = GL_RED;
-        else if (nrChannels == 3)
-            format = GL_RGB;
-        else if (nrChannels == 4)
-            format = GL_RGBA;
-        else {
-            format = GL_RGB;
-        }
-        
-        glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
-        glGenerateMipmap(GL_TEXTURE_2D);
-    } else {
-        printf("Failed to load wall texture\n");
-    }
-    stbi_image_free(data);
 }
 
 // 修改后的绘制地面和墙壁函数，应用纹理
@@ -1756,7 +1689,6 @@ int main(int argc, char **argv)
     glutCreateWindow("Interactive Smart Lamp with Alarm");
 
     initLighting();
-    loadTextures(); // 加载纹理
 
     glutDisplayFunc(display);
     glutReshapeFunc(reshape);
