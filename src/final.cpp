@@ -32,7 +32,7 @@ float base_height = 0.3f;       // 增加底座厚度
 float hemisphere_radius = 1.3f; // 增大灯罩半径
 
 // 杯子全局位置和缩放参数
-static float posX = 4.0f, posY = 2.0f, posZ = -4.8f; // 杯子底部中心位置
+static float posX = 5.0f, posY = 0.5f, posZ = -4.8f; // 杯子底部中心位置
 static float size = 1.0f;                            // 杯子和把手的整体缩放比例
 
 //------------------------------------------------------↓
@@ -72,15 +72,15 @@ float sensitivity = 0.3f;     // 旋转灵敏度
 const int clickThreshold = 5; // 点击与拖动的阈值
 
 // 灯光状态
-bool lightOn = false;
+bool lightOn = true;
 
 // 光照强度相关变量
-float light_intensity = 0.0f;       // 初始光照强度设置为0.0，表示完全关闭
+float light_intensity = 0.5f;       // 初始光照强度设置为0.0，表示完全关闭
 const float intensity_step = 0.15f; // 每次调整的步长增加，使变化更平滑
 
 // 光照强度范围
 const float max_light_intensity = 3.0f; // 最大光照强度
-float current_intensity = 0.0f;         // 当前光照强度
+float current_intensity = 0.5f;         // 当前光照强度
 
 float min_light_intensity = 0.3f; // 最小光照强度
 float center_x = 0.0f;            // 底座中心X坐标
