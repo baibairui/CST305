@@ -768,28 +768,30 @@ void resetAtmosphereMode()
 // 检查粒子是否与墙面相交
 bool isParticleIntersectingWalls(const Particle& p)
 {
-    const float WALL_THRESHOLD = 0.5f; // 增加阈值以适应更大的空间
-
+    const float WALL_THRESHOLD = 1.0f;     // 增加阈值使检测范围更大
+    const float WALL_RANGE = 10.0f;        // 增加墙面范围
+    const float FLOOR_LEVEL = -5.0f;       // 地面高度
+    
     // 检测与左墙面的相交 (x = -5.0)
     if (fabs(p.x + 5.0f) < WALL_THRESHOLD &&
-        p.y >= -5.0f && p.y <= 5.0f &&
-        p.z >= -5.0f && p.z <= 5.0f)
+        p.y >= -WALL_RANGE && p.y <= WALL_RANGE &&
+        p.z >= FLOOR_LEVEL && p.z <= WALL_RANGE)
     {
         return true;
     }
 
-    // 检测与后墙面的相交 (y = -5.0)
+    // 检测与后墙面的相交 (y = 5.0)
     if (fabs(p.y - 5.0f) < WALL_THRESHOLD &&
-        p.x >= -5.0f && p.x <= 5.0f &&
-        p.z >= -5.0f && p.z <= 5.0f)
+        p.x >= -WALL_RANGE && p.x <= WALL_RANGE &&
+        p.z >= FLOOR_LEVEL && p.z <= WALL_RANGE)
     {
         return true;
     }
 
     // 检测与地面的相交 (z = -5.0)
-    if (fabs(p.z + 5.0f) < WALL_THRESHOLD &&
-        p.x >= -5.0f && p.x <= 5.0f &&
-        p.y >= -5.0f && p.y <= 5.0f)
+    if (fabs(p.z - FLOOR_LEVEL) < WALL_THRESHOLD &&
+        p.x >= -WALL_RANGE && p.x <= WALL_RANGE &&
+        p.y >= -WALL_RANGE && p.y <= WALL_RANGE)
     {
         return true;
     }
