@@ -1,4 +1,4 @@
-#include <GL/glut.h> // 修正后的GLUT头文件路径
+#include <GLUT/glut.h> // 修正后的GLUT头文件路径
 #include <cmath>
 #include <cstdio>
 #include <ctime>
@@ -9,7 +9,7 @@
 #include "stb_image.h"
 
 // 全局纹理变量
-GLuint groundTexture, wallTexture;
+GLuint groundTexture, wallTexture,baseTexture,cupTexture;
 
 #ifdef _WIN32
 #include <windows.h>
@@ -20,12 +20,36 @@ GLuint groundTexture, wallTexture;
 #endif
 
 // ---------------- 全局变量 ----------------
+// 1. 添加全局变量
+GLfloat shadowMat[16];  // 阴影投影矩阵
+GLfloat groundPlane[] = {0.0f, 0.0f, 1.0f, 5.0f};  // 地面平面方程
+
 float lamp_x = 0.0f; // 灯罩在底座上的X坐标
 float lamp_y = 0.0f; // 灯罩在底座上的Y坐标
 
 float base_radius = 2.5f;       // 增大底座半径
 float base_height = 0.3f;       // 增加底座厚度
 float hemisphere_radius = 1.3f; // 增大灯罩半径
+
+// 杯子全局位置和缩放参数
+static float posX = 4.0f, posY = 2.0f, posZ = -4.8f; // 杯子底部中心位置
+static float size = 1.0f;                           // 杯子和把手的整体缩放比例
+
+
+//------------------------------------------------------↓
+// 新
+
+static float cupRadius = 1.0f;   // 杯外壁半径
+static float cupHeight = 2.0f;   // 杯身高度
+static float cupThickness = 0.08f; // 杯壁厚度
+
+// 把手相关参数
+static float handleRadius = 0.75f;   // 把手中心到杯身中心的距离
+static float handleTubeRadius = 0.1f; // 把手本身的粗细
+static float handleStartAngle = 180.0f; // 把手起始角度
+static float handleEndAngle = 360.0f;   // 把手终止角度
+static int handleSlices = 50;          // 把手横截面分段
+static int handleStacks = 50;          // 把手环向分段
 
 float max_distance = 2.0f; // 最大距离（用于光亮衰减）
 int use_custom_atten = 0;  // 自定义光衰减开关
@@ -87,7 +111,7 @@ const struct {
 };
 const int NUM_COLORS = sizeof(ParticleColors) / sizeof(ParticleColors[0]);
 std::vector<Particle> particles;
-const int MAX_PARTICLES = 15000;        // 增加粒子数量
+const int MAX_PARTICLES = 10000;        // 增加粒子数量
 const float PARTICLE_SPEED = 0.008f;  // 粒子移动速度
 
 // 添加全局变量
@@ -148,6 +172,7 @@ Button buttons[] = {
 void initLighting();
 void updateLighting();
 void drawBase();
+void drawDrinkingMug();
 void drawLampCover();
 void drawLightSource();
 void drawGround();
@@ -160,7 +185,6 @@ void handleKeyboard(unsigned char key, int x, int y);
 void handleSpecialKey(int key, int x, int y);
 void createMenu();
 void menuFunc(int option);
-void computeShadowMatrix();
 void display();
 GLuint loadTexture(const char* filename);
 void loadTextures();
@@ -184,6 +208,286 @@ void resetParticles();
 void drawParticles();
 void resetAtmosphereMode();
 
+//------------------------------------------------------↓
+void drawPartialTorus(float bigRadius, float smallRadius,
+                      float startAngleDeg, float endAngleDeg,
+                      int slices, int stacks)
+{
+    float startRad = startAngleDeg * (3.14159f / 180.0f);
+    float endRad = endAngleDeg * (3.14159f / 180.0f);
+    float angleRange = endRad - startRad;
+    float dTheta = angleRange / slices;
+    float dPhi = (2.0f * 3.14159f) / stacks;
+
+
+    for (int i = 0; i < slices; i++)
+    {
+        float theta0 = startRad + i * dTheta;
+        float theta1 = theta0 + dTheta;
+
+        glBegin(GL_QUAD_STRIP);
+        for (int j = 0; j <= stacks; j++)
+        {
+            float phi = j * dPhi;
+            float x0 = (bigRadius + smallRadius * cos(phi)) * cos(theta0);
+            float y0 = (bigRadius + smallRadius * cos(phi)) * sin(theta0);
+            float z0 = smallRadius * sin(phi);
+
+            float x1 = (bigRadius + smallRadius * cos(phi)) * cos(theta1);
+            float y1 = (bigRadius + smallRadius * cos(phi)) * sin(theta1);
+            float z1 = smallRadius * sin(phi);
+
+            glNormal3f(cos(phi) * cos(theta0), cos(phi) * sin(theta0), sin(phi));
+            glVertex3f(x0, y0, z0);
+
+            glNormal3f(cos(phi) * cos(theta1), cos(phi) * sin(theta1), sin(phi));
+            glVertex3f(x1, y1, z1);
+        }
+        glEnd();
+    }
+}
+
+//------------------------------------------------------
+// 绘制水杯
+//------------------------------------------------------
+void drawDrinkingMug()
+{
+    GLUquadric* quad = gluNewQuadric();
+    gluQuadricNormals(quad, GLU_SMOOTH);
+
+    glPushMatrix();
+    {
+        glTranslatef(posX, posY, posZ);
+        glScalef(size, size, size);
+
+        // 绘制水杯外壁（仅贴纹理）
+        glEnable(GL_TEXTURE_2D); // 启用 2D 纹理
+        glBindTexture(GL_TEXTURE_2D, cupTexture); // 绑定水杯纹理
+        gluQuadricTexture(quad, GL_TRUE); // 启用自动生成纹理坐标
+
+        glColor3f(1.0f, 1.0f, 1.0f); // 确保纹理显示正常
+        gluCylinder(quad, cupRadius, cupRadius, cupHeight, 36, 5);
+        glDisable(GL_TEXTURE_2D); // 禁用纹理
+
+        // 绘制水杯底部（无纹理）
+        glPushMatrix();
+        glColor3f(0.7f, 0.7f, 0.75f);
+        gluDisk(quad, 0.0, cupRadius, 36, 1);
+        glPopMatrix();
+
+        // 绘制水杯内壁（无纹理）
+        float innerRadius = cupRadius - cupThickness;
+        glPushMatrix();
+        glTranslatef(0.0f, 0.0f, cupThickness);
+        glColor3f(0.9f, 0.9f, 0.95f);
+        gluCylinder(quad, innerRadius, innerRadius, cupHeight - cupThickness, 36, 5);
+        glPopMatrix();
+
+        // 绘制水杯把手（无纹理）
+        glPushMatrix();
+        glTranslatef(cupRadius, 0.0f, cupHeight * 0.5f);
+        glRotatef(90.0f, 1.0f, 0.0f, 0.0f);
+        glRotatef(90.0f, 0.0f, 0.0f, 1.0f);
+        glColor3f(0.7f, 0.7f, 0.75f);
+        drawPartialTorus(handleRadius, handleTubeRadius,
+                         handleStartAngle, handleEndAngle,
+                         handleSlices, handleStacks);
+        glPopMatrix();
+    }
+    glPopMatrix();
+
+    gluDeleteQuadric(quad);
+}
+
+//------------------------------------------------------↑
+// 2. 添加阴影矩阵计算函数
+void calculateShadowMatrix(GLfloat shadowMat[16], GLfloat groundplane[4], GLfloat lightpos[4]) {
+    GLfloat dot;
+    
+    dot = groundplane[0] * lightpos[0] +
+          groundplane[1] * lightpos[1] +
+          groundplane[2] * lightpos[2] +
+          groundplane[3] * lightpos[3];
+
+    shadowMat[0]  = dot - lightpos[0] * groundplane[0];
+    shadowMat[4]  = 0.0f - lightpos[0] * groundplane[1];
+    shadowMat[8]  = 0.0f - lightpos[0] * groundplane[2];
+    shadowMat[12] = 0.0f - lightpos[0] * groundplane[3];
+
+    shadowMat[1]  = 0.0f - lightpos[1] * groundplane[0];
+    shadowMat[5]  = dot - lightpos[1] * groundplane[1];
+    shadowMat[9]  = 0.0f - lightpos[1] * groundplane[2];
+    shadowMat[13] = 0.0f - lightpos[1] * groundplane[3];
+
+    shadowMat[2]  = 0.0f - lightpos[2] * groundplane[0];
+    shadowMat[6]  = 0.0f - lightpos[2] * groundplane[1];
+    shadowMat[10] = dot - lightpos[2] * groundplane[2];
+    shadowMat[14] = 0.0f - lightpos[2] * groundplane[3];
+
+    shadowMat[3]  = 0.0f - lightpos[3] * groundplane[0];
+    shadowMat[7]  = 0.0f - lightpos[3] * groundplane[1];
+    shadowMat[11] = 0.0f - lightpos[3] * groundplane[2];
+    shadowMat[15] = dot - lightpos[3] * groundplane[3];
+}
+// 3. 添加阴影绘制函数
+void drawShadow() {
+    // 更新光源位置
+    float base_z = -5.0f + base_height;
+    float lamp_z = base_z + hemisphere_radius; 
+    GLfloat lightPosition[] = {lamp_x, lamp_y, lamp_z, 1.0f};
+    
+    // 计算阴影矩阵
+    calculateShadowMatrix(shadowMat, groundPlane, lightPosition);
+    // 保存当前深度函数
+    GLint savedDepthFunc;
+    glGetIntegerv(GL_DEPTH_FUNC, &savedDepthFunc);
+    glDisable(GL_LIGHTING);
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    // 修改深度测试函数，避免z-fighting
+    glDepthFunc(GL_LEQUAL);
+    glPushMatrix();
+        // 应用阴影矩阵
+        glMultMatrixf(shadowMat);
+        
+        // 设置阴影颜色（半透明黑色）
+        glColor4f(0.0f, 0.0f, 0.0f, 0.5f);
+        
+        // 1. 绘制灯罩阴影
+        glPushMatrix();
+            glTranslatef(lamp_x, lamp_y, lamp_z);
+            GLUquadric *quad = gluNewQuadric();
+            gluSphere(quad, hemisphere_radius, 50, 50);
+            gluDeleteQuadric(quad);
+        glPopMatrix();
+        
+        // 2. 绘制底座阴影
+        glPushMatrix();
+            glTranslatef(0.0f, 0.0f, -5.0f);
+            quad = gluNewQuadric();
+            gluCylinder(quad, base_radius, base_radius, base_height, 50, 50);
+            gluDeleteQuadric(quad);
+        glPopMatrix();
+
+
+        // （c）水杯阴影
+        glPushMatrix();
+            // 先把坐标变换到水杯所在的位置 (posX, posY, posZ)
+            glTranslatef(posX, posY, posZ);
+            glScalef(size, size, size);
+
+            // 不要再调用 glColor3f(...) 或材质，但要画跟水杯一致的几何
+            // （1）杯身
+            GLUquadric *quad2 = gluNewQuadric();
+            gluCylinder(quad2, cupRadius, cupRadius, cupHeight, 36, 5);
+
+            // （2）杯底
+            glPushMatrix();
+                gluDisk(quad2, 0.0, cupRadius, 36, 1);
+            glPopMatrix();
+
+            // （3）杯内壁
+            float innerRadius = cupRadius - cupThickness;
+            glPushMatrix();
+                glTranslatef(0.0f, 0.0f, cupThickness);
+                gluCylinder(quad2, innerRadius, innerRadius, cupHeight - cupThickness, 36, 5);
+            glPopMatrix();
+
+            // （4）杯把手 (局部环面)
+            glPushMatrix();
+                glTranslatef(cupRadius, 0.0f, cupHeight * 0.5f);
+                glRotatef(90.0f, 1.0f, 0.0f, 0.0f);
+                glRotatef(90.0f, 0.0f, 0.0f, 1.0f);
+                // 这里同样画局部环面即可（把 drawPartialTorus(...) 的实现搬过来或直接调用）
+                // 但记得别再换颜色
+                drawPartialTorus(handleRadius, handleTubeRadius, handleStartAngle, handleEndAngle, handleSlices, handleStacks);
+            glPopMatrix();
+
+            gluDeleteQuadric(quad2);
+
+        glPopMatrix();
+
+    // 收尾
+    glPopMatrix();
+    
+    glDepthFunc(savedDepthFunc);
+    glEnable(GL_LIGHTING); 
+    glDisable(GL_BLEND);
+}
+// 添加绘制正方体的函数
+void drawCube() {
+    glPushMatrix();
+    
+    // 设置正方体位置：靠近灯的底座
+    float cube_size = 0.5f; // 正方体大小
+    // 位置在底座边缘附近
+    float cube_x = base_radius - cube_size + 2.0f;
+    float cube_y = 2.0f;
+    float cube_z = -5.0f + base_height; // 与底座顶部齐平
+    
+    glTranslatef(cube_x, cube_y, cube_z);
+    
+    // 设置材质属性
+    GLfloat cube_ambient[] = {0.2f, 0.2f, 0.2f, 1.0f};
+    GLfloat cube_diffuse[] = {0.8f, 0.8f, 0.8f, 1.0f};
+    GLfloat cube_specular[] = {1.0f, 1.0f, 1.0f, 1.0f};
+    GLfloat cube_shininess[] = {100.0f};
+    
+    glMaterialfv(GL_FRONT, GL_AMBIENT, cube_ambient);
+    glMaterialfv(GL_FRONT, GL_DIFFUSE, cube_diffuse);
+    glMaterialfv(GL_FRONT, GL_SPECULAR, cube_specular);
+    glMaterialfv(GL_FRONT, GL_SHININESS, cube_shininess);
+    
+    // 绘制正方体
+    glBegin(GL_QUADS);
+    
+    // 前面
+    glNormal3f(0.0f, -1.0f, 0.0f);
+    glVertex3f(-cube_size/2, -cube_size/2, cube_size/2);
+    glVertex3f(cube_size/2, -cube_size/2, cube_size/2);
+    glVertex3f(cube_size/2, -cube_size/2, -cube_size/2);
+    glVertex3f(-cube_size/2, -cube_size/2, -cube_size/2);
+    
+    // 后面
+    glNormal3f(0.0f, 1.0f, 0.0f);
+    glVertex3f(-cube_size/2, cube_size/2, -cube_size/2);
+    glVertex3f(cube_size/2, cube_size/2, -cube_size/2);
+    glVertex3f(cube_size/2, cube_size/2, cube_size/2);
+    glVertex3f(-cube_size/2, cube_size/2, cube_size/2);
+    
+    // 顶面
+    glNormal3f(0.0f, 0.0f, 1.0f);
+    glVertex3f(-cube_size/2, -cube_size/2, cube_size/2);
+    glVertex3f(-cube_size/2, cube_size/2, cube_size/2);
+    glVertex3f(cube_size/2, cube_size/2, cube_size/2);
+    glVertex3f(cube_size/2, -cube_size/2, cube_size/2);
+    
+    // 底面
+    glNormal3f(0.0f, 0.0f, -1.0f);
+    glVertex3f(-cube_size/2, -cube_size/2, -cube_size/2);
+    glVertex3f(cube_size/2, -cube_size/2, -cube_size/2);
+    glVertex3f(cube_size/2, cube_size/2, -cube_size/2);
+    glVertex3f(-cube_size/2, cube_size/2, -cube_size/2);
+    
+    // 右面
+    glNormal3f(1.0f, 0.0f, 0.0f);
+    glVertex3f(cube_size/2, -cube_size/2, -cube_size/2);
+    glVertex3f(cube_size/2, -cube_size/2, cube_size/2);
+    glVertex3f(cube_size/2, cube_size/2, cube_size/2);
+    glVertex3f(cube_size/2, cube_size/2, -cube_size/2);
+    
+    // 左面
+    glNormal3f(-1.0f, 0.0f, 0.0f);
+    glVertex3f(-cube_size/2, -cube_size/2, -cube_size/2);
+    glVertex3f(-cube_size/2, cube_size/2, -cube_size/2);
+    glVertex3f(-cube_size/2, cube_size/2, cube_size/2);
+    glVertex3f(-cube_size/2, -cube_size/2, cube_size/2);
+    
+    glEnd();
+    
+    glPopMatrix();
+}
 // ---------------- 初始化光照 ----------------
 void initLighting()
 {
@@ -286,33 +590,54 @@ void updateLighting()
 }
 
 // ---------------- 绘制底座 ----------------
-void drawBase() {
+void drawBase()
+{
     glPushMatrix();
-    
+
     // 将底座放置在地面上 (z = -5.0f)
     glTranslatef(0.0f, 0.0f, -5.0f);
-    
-    // 设置材质属性
-    GLfloat mat_ambient[] = {0.3f, 0.3f, 0.3f, 1.0f};
-    GLfloat mat_diffuse[] = {0.5f, 0.5f, 0.5f, 1.0f};
-    GLfloat mat_specular[] = {0.7f, 0.7f, 0.7f, 1.0f};
-    GLfloat mat_shininess[] = {50.0f};
 
-    glMaterialfv(GL_FRONT, GL_AMBIENT, mat_ambient);
-    glMaterialfv(GL_FRONT, GL_DIFFUSE, mat_diffuse);
-    glMaterialfv(GL_FRONT, GL_SPECULAR, mat_specular);
+    //-------------------------------------
+    // 1. 启用 2D 纹理、绑定到底座纹理ID
+    //-------------------------------------
+    glEnable(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, baseTexture); // 假设你把底座纹理存到 baseTexture 里
+
+    // 设置材质属性（可根据需要调节）
+    GLfloat mat_ambient[]  = {0.3f, 0.3f, 0.3f, 1.0f};
+    GLfloat mat_diffuse[]  = {0.8f, 0.8f, 0.8f, 1.0f}; 
+    GLfloat mat_specular[] = {0.5f, 0.5f, 0.5f, 1.0f};
+    GLfloat mat_shininess[] = {32.0f};
+
+    glMaterialfv(GL_FRONT, GL_AMBIENT,   mat_ambient);
+    glMaterialfv(GL_FRONT, GL_DIFFUSE,   mat_diffuse);
+    glMaterialfv(GL_FRONT, GL_SPECULAR,  mat_specular);
     glMaterialfv(GL_FRONT, GL_SHININESS, mat_shininess);
 
-    glColor3f(0.5f, 0.5f, 0.5f);
-    
-    GLUquadric *quad = gluNewQuadric();
+    // 让颜色与材质配合，此处使用接近白色(主要依赖纹理颜色)
+    glColor3f(1.0f, 1.0f, 1.0f);
+
+    //-------------------------------------
+    // 2. 创建 Quadric 并启用自动生成纹理坐标
+    //-------------------------------------
+    GLUquadric* quad = gluNewQuadric();
+    gluQuadricNormals(quad, GLU_SMOOTH);
+    gluQuadricTexture(quad, GL_TRUE); // 让该 quad 自动生成纹理坐标
+
     // 绘制底座圆柱体
     gluCylinder(quad, base_radius, base_radius, base_height, 50, 50);
-    // 绘制底座顶面
+
+    // 绘制底座顶面（一个圆盘）
     glTranslatef(0.0f, 0.0f, base_height);
     gluDisk(quad, 0.0f, base_radius, 50, 50);
-    
+
     gluDeleteQuadric(quad);
+
+    //-------------------------------------
+    // 3. 关闭纹理
+    //-------------------------------------
+    glDisable(GL_TEXTURE_2D);
+
     glPopMatrix();
 }
 
@@ -344,7 +669,7 @@ void drawLampCover() {
     
     // 计算灯罩位置：地面(-5.0f) + 底座高度 + 灯罩半径
     float base_z = -5.0f + base_height;
-    float lamp_z = base_z + hemisphere_radius;
+    float lamp_z = base_z + hemisphere_radius*0.5;
     
     // 移动到灯罩位置
     glTranslatef(lamp_x, lamp_y, lamp_z);
@@ -591,28 +916,30 @@ void resetAtmosphereMode()
 // 检查粒子是否与墙面相交
 bool isParticleIntersectingWalls(const Particle& p)
 {
-    const float WALL_THRESHOLD = 0.5f; // 增加阈值以适应更大的空间
-
+    const float WALL_THRESHOLD = 1.0f;     // 增加阈值使检测范围更大
+    const float WALL_RANGE = 10.0f;        // 增加墙面范围
+    const float FLOOR_LEVEL = -5.0f;       // 地面高度
+    
     // 检测与左墙面的相交 (x = -5.0)
     if (fabs(p.x + 5.0f) < WALL_THRESHOLD &&
-        p.y >= -5.0f && p.y <= 5.0f &&
-        p.z >= -5.0f && p.z <= 5.0f)
+        p.y >= -WALL_RANGE && p.y <= WALL_RANGE &&
+        p.z >= FLOOR_LEVEL && p.z <= WALL_RANGE)
     {
         return true;
     }
 
-    // 检测与后墙面的相交 (y = -5.0)
+    // 检测与后墙面的相交 (y = 5.0)
     if (fabs(p.y - 5.0f) < WALL_THRESHOLD &&
-        p.x >= -5.0f && p.x <= 5.0f &&
-        p.z >= -5.0f && p.z <= 5.0f)
+        p.x >= -WALL_RANGE && p.x <= WALL_RANGE &&
+        p.z >= FLOOR_LEVEL && p.z <= WALL_RANGE)
     {
         return true;
     }
 
     // 检测与地面的相交 (z = -5.0)
-    if (fabs(p.z + 5.0f) < WALL_THRESHOLD &&
-        p.x >= -5.0f && p.x <= 5.0f &&
-        p.y >= -5.0f && p.y <= 5.0f)
+    if (fabs(p.z - FLOOR_LEVEL) < WALL_THRESHOLD &&
+        p.x >= -WALL_RANGE && p.x <= WALL_RANGE &&
+        p.y >= -WALL_RANGE && p.y <= WALL_RANGE)
     {
         return true;
     }
@@ -797,14 +1124,29 @@ void display()
     float lamp_z = base_z + hemisphere_radius;
     gluLookAt(-camera_x, -camera_y, camera_distance ,
               lamp_x, lamp_y, lamp_z,
-              0.0, 0.0, 1.4);
+              0.0, 0.0, 0.01);
 
     updateLighting();
     drawGround();
     drawWalls();
+    glEnable(GL_POLYGON_OFFSET_FILL);
+    // 这两个参数可根据实际情况微调，(factor, units) 都可以适当加大一点
+    glPolygonOffset(-1.0f, -1.0f);
+    if (lightOn && currentMode!=ATMOSPHERE)
+    {
+        drawShadow();  
+    }
+    // 绘制完成后关闭偏移
+    glDisable(GL_POLYGON_OFFSET_FILL);
     drawBase();
     drawLightSource();
     drawLampCover();
+
+    if (currentMode != ATMOSPHERE){
+        glDisable(GL_CULL_FACE);
+        drawDrinkingMug();
+        glEnable(GL_CULL_FACE);
+    }
     
     // 如果是Atmosphere模式且灯光开启，则绘制粒子效果
     if (currentMode == ATMOSPHERE )
@@ -817,56 +1159,6 @@ void display()
         glPopMatrix();
     }
 
-    // -------------- 渲染阴影开始 --------------
-    if (lightOn) { // 仅在灯光开启时渲染阴影
-        // 定义地面平面方程: z + 5 = 0 -> A=0, B=0, C=1, D=5
-        GLfloat groundplane[] = {0.0f, 0.0f, 1.0f, 5.0f};
-        // 获取光源位置
-        GLfloat lightpos[] = {lamp_x, lamp_y, lamp_z, 1.0f};
-
-        // 计算投影矩阵
-        GLfloat shadowMat[4][4];
-        computeShadowMatrix(shadowMat, groundplane, lightpos);
-
-        glPushMatrix();
-        glMultMatrixf(&shadowMat[0][0]);
-
-        // 设置阴影颜色为全黑且完全不透明
-        glColor3f(0.0f, 0.0f, 0.0f);
-
-        // 禁用光照和纹理
-        glDisable(GL_LIGHTING);
-        glDisable(GL_TEXTURE_2D);
-
-        // 禁用混合，因为我们希望阴影是完全不透明的
-        glDisable(GL_BLEND);
-
-        // 启用多边形偏移，避免Z-fighting
-        glEnable(GL_POLYGON_OFFSET_FILL);
-        glPolygonOffset(-1.0f, -1.0f); // 根据需要调整偏移值
-
-        // 禁用深度写入，避免阴影影响深度缓冲
-        glDepthMask(GL_FALSE);
-        glDisable(GL_DEPTH_TEST); // 禁用深度测试以防止阴影与地板发生冲突
-
-        // 渲染需要投影的对象，这里是底座和灯罩
-        drawBase();
-        drawLampCover();
-
-        // 禁用多边形偏移
-        glDisable(GL_POLYGON_OFFSET_FILL);
-
-        // 恢复深度写入和渲染状态
-        glDepthMask(GL_TRUE);
-        glEnable(GL_DEPTH_TEST); // 重新启用深度测试
-
-        // 恢复渲染状态
-        glEnable(GL_LIGHTING);
-        glEnable(GL_TEXTURE_2D);
-
-        glPopMatrix();
-    }
-    // -------------- 渲染阴影结束 --------------
 
     // 2. 绘制2D UI (按钮)
     glMatrixMode(GL_PROJECTION);
@@ -1110,8 +1402,10 @@ GLuint loadTexture(const char* filename)
 }
 void loadTextures()
 {
-    groundTexture = loadTexture("red_wood.png"); // 替换为您的地面纹理文件
-    wallTexture = loadTexture("image.png");     // 替换为您的墙壁纹理文件
+    groundTexture = loadTexture("src/image copy 9.png"); // 替换为您的地面纹理文件
+    wallTexture = loadTexture("src/image copy 11.png");     // 替换为您的墙壁纹理文件
+    baseTexture = loadTexture("src/image copy 6.png");
+    cupTexture = loadTexture("src/image.png");
 
     if (groundTexture == 0 || wallTexture == 0)
     {
