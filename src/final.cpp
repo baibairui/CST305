@@ -9,7 +9,7 @@
 #include "stb_image.h"
 
 // 全局纹理变量
-GLuint groundTexture, wallTexture,baseTexture,cupTexture;
+GLuint groundTexture, wallTexture, baseTexture, cupTexture;
 
 #ifdef _WIN32
 #include <windows.h>
@@ -21,8 +21,8 @@ GLuint groundTexture, wallTexture,baseTexture,cupTexture;
 
 // ---------------- 全局变量 ----------------
 // 1. 添加全局变量
-GLfloat shadowMat[16];  // 阴影投影矩阵
-GLfloat groundPlane[] = {0.0f, 0.0f, 1.0f, 5.0f};  // 地面平面方程
+GLfloat shadowMat[16];                            // 阴影投影矩阵
+GLfloat groundPlane[] = {0.0f, 0.0f, 1.0f, 5.0f}; // 地面平面方程
 
 float lamp_x = 0.0f; // 灯罩在底座上的X坐标
 float lamp_y = 0.0f; // 灯罩在底座上的Y坐标
@@ -33,23 +33,22 @@ float hemisphere_radius = 1.3f; // 增大灯罩半径
 
 // 杯子全局位置和缩放参数
 static float posX = 4.0f, posY = 2.0f, posZ = -4.8f; // 杯子底部中心位置
-static float size = 1.0f;                           // 杯子和把手的整体缩放比例
-
+static float size = 1.0f;                            // 杯子和把手的整体缩放比例
 
 //------------------------------------------------------↓
 // 新
 
-static float cupRadius = 1.0f;   // 杯外壁半径
-static float cupHeight = 2.0f;   // 杯身高度
+static float cupRadius = 1.0f;     // 杯外壁半径
+static float cupHeight = 2.0f;     // 杯身高度
 static float cupThickness = 0.08f; // 杯壁厚度
 
 // 把手相关参数
-static float handleRadius = 0.75f;   // 把手中心到杯身中心的距离
-static float handleTubeRadius = 0.1f; // 把手本身的粗细
+static float handleRadius = 0.75f;      // 把手中心到杯身中心的距离
+static float handleTubeRadius = 0.1f;   // 把手本身的粗细
 static float handleStartAngle = 180.0f; // 把手起始角度
 static float handleEndAngle = 360.0f;   // 把手终止角度
-static int handleSlices = 50;          // 把手横截面分段
-static int handleStacks = 50;          // 把手环向分段
+static int handleSlices = 50;           // 把手横截面分段
+static int handleStacks = 50;           // 把手环向分段
 
 float max_distance = 2.0f; // 最大距离（用于光亮衰减）
 int use_custom_atten = 0;  // 自定义光衰减开关
@@ -90,7 +89,8 @@ float offsetY = -0.1f;            // 调整按钮向下偏移的量
 
 // ---------------- 粒子效果相关 ----------------
 // 粒子结构体
-struct Particle {
+struct Particle
+{
     float x, y, z;    // 位置
     float vx, vy, vz; // 速度
     float life;       // 生命周期
@@ -99,25 +99,26 @@ struct Particle {
 };
 
 // 预定义粒子颜色
-const struct {
+const struct
+{
     float r, g, b;
 } ParticleColors[] = {
-    {1.0f, 0.5f, 0.0f},  // 橙色
-    {1.0f, 0.8f, 0.0f},  // 金黄
-    {0.8f, 0.2f, 0.2f},  // 红色
-    {0.9f, 0.6f, 0.3f},  // 暖橙
-    {1.0f, 0.4f, 0.4f},  // 粉红
-    {0.8f, 0.8f, 0.4f},  // 暖黄
+    {1.0f, 0.5f, 0.0f}, // 橙色
+    {1.0f, 0.8f, 0.0f}, // 金黄
+    {0.8f, 0.2f, 0.2f}, // 红色
+    {0.9f, 0.6f, 0.3f}, // 暖橙
+    {1.0f, 0.4f, 0.4f}, // 粉红
+    {0.8f, 0.8f, 0.4f}, // 暖黄
 };
 const int NUM_COLORS = sizeof(ParticleColors) / sizeof(ParticleColors[0]);
 std::vector<Particle> particles;
-const int MAX_PARTICLES = 10000;        // 增加粒子数量
-const float PARTICLE_SPEED = 0.008f;  // 粒子移动速度
+const int MAX_PARTICLES = 10000;     // 增加粒子数量
+const float PARTICLE_SPEED = 0.008f; // 粒子移动速度
 
 // 添加全局变量
-const float MIN_LIFE_TIME = 6.0f;  // 最小生命周期（秒）
-const float MAX_LIFE_TIME = 7.0f;  // 最大生命周期（秒）
-const float LIFE_SPEED = 0.0002f;  // 生命周期变化速度
+const float MIN_LIFE_TIME = 6.0f; // 最小生命周期（秒）
+const float MAX_LIFE_TIME = 7.0f; // 最大生命周期（秒）
+const float LIFE_SPEED = 0.0002f; // 生命周期变化速度
 
 // 闹钟相关变量
 struct AlarmTime
@@ -140,7 +141,8 @@ pid_t alarm_pid = -1; // 全局变量，用于存储子进程的 PID
 #endif
 
 // ---------------- 模式定义 ----------------
-enum Mode {
+enum Mode
+{
     NORMAL,
     ALARM,
     ATMOSPHERE
@@ -165,7 +167,7 @@ Button buttons[] = {
     {-0.9f, 0.9f, 0.35f, 0.18f, "Light ON/OFF", false},
     {-0.5f, 0.9f, 0.25f, 0.18f, "Dimmer -", false},
     {-0.2f, 0.9f, 0.25f, 0.18f, "Dimmer +", false},
-    {0.1f, 0.9f, 0.35f, 0.18f, "Mode Switch", false}, 
+    {0.1f, 0.9f, 0.35f, 0.18f, "Mode Switch", false},
 };
 
 // ---------------- 函数声明 ----------------
@@ -186,7 +188,7 @@ void handleSpecialKey(int key, int x, int y);
 void createMenu();
 void menuFunc(int option);
 void display();
-GLuint loadTexture(const char* filename);
+GLuint loadTexture(const char *filename);
 void loadTextures();
 void reshape(int w, int h);
 void checkAlarm();
@@ -201,8 +203,8 @@ void resetAlarmMode();
 void resetNormalMode();
 void drawButton(const Button &btn);
 // 粒子相关函数
-bool isParticleIntersectingWalls(const Particle& p);
-void initParticle(Particle& p);
+bool isParticleIntersectingWalls(const Particle &p);
+void initParticle(Particle &p);
 void updateParticles();
 void resetParticles();
 void drawParticles();
@@ -218,7 +220,6 @@ void drawPartialTorus(float bigRadius, float smallRadius,
     float angleRange = endRad - startRad;
     float dTheta = angleRange / slices;
     float dPhi = (2.0f * 3.14159f) / stacks;
-
 
     for (int i = 0; i < slices; i++)
     {
@@ -252,7 +253,7 @@ void drawPartialTorus(float bigRadius, float smallRadius,
 //------------------------------------------------------
 void drawDrinkingMug()
 {
-    GLUquadric* quad = gluNewQuadric();
+    GLUquadric *quad = gluNewQuadric();
     gluQuadricNormals(quad, GLU_SMOOTH);
 
     glPushMatrix();
@@ -261,9 +262,9 @@ void drawDrinkingMug()
         glScalef(size, size, size);
 
         // 绘制水杯外壁（仅贴纹理）
-        glEnable(GL_TEXTURE_2D); // 启用 2D 纹理
+        glEnable(GL_TEXTURE_2D);                  // 启用 2D 纹理
         glBindTexture(GL_TEXTURE_2D, cupTexture); // 绑定水杯纹理
-        gluQuadricTexture(quad, GL_TRUE); // 启用自动生成纹理坐标
+        gluQuadricTexture(quad, GL_TRUE);         // 启用自动生成纹理坐标
 
         glColor3f(1.0f, 1.0f, 1.0f); // 确保纹理显示正常
         gluCylinder(quad, cupRadius, cupRadius, cupHeight, 36, 5);
@@ -301,41 +302,43 @@ void drawDrinkingMug()
 
 //------------------------------------------------------↑
 // 2. 添加阴影矩阵计算函数
-void calculateShadowMatrix(GLfloat shadowMat[16], GLfloat groundplane[4], GLfloat lightpos[4]) {
+void calculateShadowMatrix(GLfloat shadowMat[16], GLfloat groundplane[4], GLfloat lightpos[4])
+{
     GLfloat dot;
-    
+
     dot = groundplane[0] * lightpos[0] +
           groundplane[1] * lightpos[1] +
           groundplane[2] * lightpos[2] +
           groundplane[3] * lightpos[3];
 
-    shadowMat[0]  = dot - lightpos[0] * groundplane[0];
-    shadowMat[4]  = 0.0f - lightpos[0] * groundplane[1];
-    shadowMat[8]  = 0.0f - lightpos[0] * groundplane[2];
+    shadowMat[0] = dot - lightpos[0] * groundplane[0];
+    shadowMat[4] = 0.0f - lightpos[0] * groundplane[1];
+    shadowMat[8] = 0.0f - lightpos[0] * groundplane[2];
     shadowMat[12] = 0.0f - lightpos[0] * groundplane[3];
 
-    shadowMat[1]  = 0.0f - lightpos[1] * groundplane[0];
-    shadowMat[5]  = dot - lightpos[1] * groundplane[1];
-    shadowMat[9]  = 0.0f - lightpos[1] * groundplane[2];
+    shadowMat[1] = 0.0f - lightpos[1] * groundplane[0];
+    shadowMat[5] = dot - lightpos[1] * groundplane[1];
+    shadowMat[9] = 0.0f - lightpos[1] * groundplane[2];
     shadowMat[13] = 0.0f - lightpos[1] * groundplane[3];
 
-    shadowMat[2]  = 0.0f - lightpos[2] * groundplane[0];
-    shadowMat[6]  = 0.0f - lightpos[2] * groundplane[1];
+    shadowMat[2] = 0.0f - lightpos[2] * groundplane[0];
+    shadowMat[6] = 0.0f - lightpos[2] * groundplane[1];
     shadowMat[10] = dot - lightpos[2] * groundplane[2];
     shadowMat[14] = 0.0f - lightpos[2] * groundplane[3];
 
-    shadowMat[3]  = 0.0f - lightpos[3] * groundplane[0];
-    shadowMat[7]  = 0.0f - lightpos[3] * groundplane[1];
+    shadowMat[3] = 0.0f - lightpos[3] * groundplane[0];
+    shadowMat[7] = 0.0f - lightpos[3] * groundplane[1];
     shadowMat[11] = 0.0f - lightpos[3] * groundplane[2];
     shadowMat[15] = dot - lightpos[3] * groundplane[3];
 }
 // 3. 添加阴影绘制函数
-void drawShadow() {
+void drawShadow()
+{
     // 更新光源位置
     float base_z = -5.0f + base_height;
-    float lamp_z = base_z + hemisphere_radius; 
+    float lamp_z = base_z + hemisphere_radius;
     GLfloat lightPosition[] = {lamp_x, lamp_y, lamp_z, 1.0f};
-    
+
     // 计算阴影矩阵
     calculateShadowMatrix(shadowMat, groundPlane, lightPosition);
     // 保存当前深度函数
@@ -348,144 +351,147 @@ void drawShadow() {
     // 修改深度测试函数，避免z-fighting
     glDepthFunc(GL_LEQUAL);
     glPushMatrix();
-        // 应用阴影矩阵
-        glMultMatrixf(shadowMat);
-        
-        // 设置阴影颜色（半透明黑色）
-        glColor4f(0.0f, 0.0f, 0.0f, 0.5f);
-        
-        // 1. 绘制灯罩阴影
-        glPushMatrix();
-            glTranslatef(lamp_x, lamp_y, lamp_z);
-            GLUquadric *quad = gluNewQuadric();
-            gluSphere(quad, hemisphere_radius, 50, 50);
-            gluDeleteQuadric(quad);
-        glPopMatrix();
-        
-        // 2. 绘制底座阴影
-        glPushMatrix();
-            glTranslatef(0.0f, 0.0f, -5.0f);
-            quad = gluNewQuadric();
-            gluCylinder(quad, base_radius, base_radius, base_height, 50, 50);
-            gluDeleteQuadric(quad);
-        glPopMatrix();
+    // 应用阴影矩阵
+    glMultMatrixf(shadowMat);
 
+    // 比如跟 current_intensity 成正比，让灯越亮，阴影越深
+    float shadowAlpha = 0.2f + 0.3f * current_intensity; // 这里随意举例
+    // shadowAlpha 最低 0.2, 最高 0.5
+    glColor4f(0.0f, 0.0f, 0.0f, shadowAlpha);
 
-        // （c）水杯阴影
-        glPushMatrix();
-            // 先把坐标变换到水杯所在的位置 (posX, posY, posZ)
-            glTranslatef(posX, posY, posZ);
-            glScalef(size, size, size);
+    // 1. 绘制灯罩阴影
+    glPushMatrix();
+    glTranslatef(lamp_x, lamp_y, lamp_z);
+    GLUquadric *quad = gluNewQuadric();
+    gluSphere(quad, hemisphere_radius, 50, 50);
+    gluDeleteQuadric(quad);
+    glPopMatrix();
 
-            // 不要再调用 glColor3f(...) 或材质，但要画跟水杯一致的几何
-            // （1）杯身
-            GLUquadric *quad2 = gluNewQuadric();
-            gluCylinder(quad2, cupRadius, cupRadius, cupHeight, 36, 5);
+    // 2. 绘制底座阴影
+    glPushMatrix();
+    glTranslatef(0.0f, 0.0f, -5.0f);
+    quad = gluNewQuadric();
+    gluCylinder(quad, base_radius, base_radius, base_height, 50, 50);
+    gluDeleteQuadric(quad);
+    glPopMatrix();
 
-            // （2）杯底
-            glPushMatrix();
-                gluDisk(quad2, 0.0, cupRadius, 36, 1);
-            glPopMatrix();
+    // （c）水杯阴影
+    glPushMatrix();
+    // 先把坐标变换到水杯所在的位置 (posX, posY, posZ)
+    glTranslatef(posX, posY, posZ);
+    glScalef(size, size, size);
 
-            // （3）杯内壁
-            float innerRadius = cupRadius - cupThickness;
-            glPushMatrix();
-                glTranslatef(0.0f, 0.0f, cupThickness);
-                gluCylinder(quad2, innerRadius, innerRadius, cupHeight - cupThickness, 36, 5);
-            glPopMatrix();
+    // 不要再调用 glColor3f(...) 或材质，但要画跟水杯一致的几何
+    // （1）杯身
+    GLUquadric *quad2 = gluNewQuadric();
+    gluCylinder(quad2, cupRadius, cupRadius, cupHeight, 36, 5);
 
-            // （4）杯把手 (局部环面)
-            glPushMatrix();
-                glTranslatef(cupRadius, 0.0f, cupHeight * 0.5f);
-                glRotatef(90.0f, 1.0f, 0.0f, 0.0f);
-                glRotatef(90.0f, 0.0f, 0.0f, 1.0f);
-                // 这里同样画局部环面即可（把 drawPartialTorus(...) 的实现搬过来或直接调用）
-                // 但记得别再换颜色
-                drawPartialTorus(handleRadius, handleTubeRadius, handleStartAngle, handleEndAngle, handleSlices, handleStacks);
-            glPopMatrix();
+    // （2）杯底
+    glPushMatrix();
+    gluDisk(quad2, 0.0, cupRadius, 36, 1);
+    glPopMatrix();
 
-            gluDeleteQuadric(quad2);
+    // （3）杯内壁
+    float innerRadius = cupRadius - cupThickness;
+    glPushMatrix();
+    glTranslatef(0.0f, 0.0f, cupThickness);
+    gluCylinder(quad2, innerRadius, innerRadius, cupHeight - cupThickness, 36, 5);
+    glPopMatrix();
 
-        glPopMatrix();
+    // （4）杯把手 (局部环面)
+    glPushMatrix();
+    glTranslatef(cupRadius, 0.0f, cupHeight * 0.5f);
+    glRotatef(90.0f, 1.0f, 0.0f, 0.0f);
+    glRotatef(90.0f, 0.0f, 0.0f, 1.0f);
+    // 这里同样画局部环面即可（把 drawPartialTorus(...) 的实现搬过来或直接调用）
+    // 但记得别再换颜色
+    drawPartialTorus(handleRadius, handleTubeRadius, handleStartAngle, handleEndAngle, handleSlices, handleStacks);
+    glPopMatrix();
+
+    gluDeleteQuadric(quad2);
+
+    glPopMatrix();
 
     // 收尾
     glPopMatrix();
-    
+
     glDepthFunc(savedDepthFunc);
-    glEnable(GL_LIGHTING); 
+    glEnable(GL_LIGHTING);
     glDisable(GL_BLEND);
 }
+
 // 添加绘制正方体的函数
-void drawCube() {
+void drawCube()
+{
     glPushMatrix();
-    
+
     // 设置正方体位置：靠近灯的底座
     float cube_size = 0.5f; // 正方体大小
     // 位置在底座边缘附近
     float cube_x = base_radius - cube_size + 2.0f;
     float cube_y = 2.0f;
     float cube_z = -5.0f + base_height; // 与底座顶部齐平
-    
+
     glTranslatef(cube_x, cube_y, cube_z);
-    
+
     // 设置材质属性
     GLfloat cube_ambient[] = {0.2f, 0.2f, 0.2f, 1.0f};
     GLfloat cube_diffuse[] = {0.8f, 0.8f, 0.8f, 1.0f};
     GLfloat cube_specular[] = {1.0f, 1.0f, 1.0f, 1.0f};
     GLfloat cube_shininess[] = {100.0f};
-    
+
     glMaterialfv(GL_FRONT, GL_AMBIENT, cube_ambient);
     glMaterialfv(GL_FRONT, GL_DIFFUSE, cube_diffuse);
     glMaterialfv(GL_FRONT, GL_SPECULAR, cube_specular);
     glMaterialfv(GL_FRONT, GL_SHININESS, cube_shininess);
-    
+
     // 绘制正方体
     glBegin(GL_QUADS);
-    
+
     // 前面
     glNormal3f(0.0f, -1.0f, 0.0f);
-    glVertex3f(-cube_size/2, -cube_size/2, cube_size/2);
-    glVertex3f(cube_size/2, -cube_size/2, cube_size/2);
-    glVertex3f(cube_size/2, -cube_size/2, -cube_size/2);
-    glVertex3f(-cube_size/2, -cube_size/2, -cube_size/2);
-    
+    glVertex3f(-cube_size / 2, -cube_size / 2, cube_size / 2);
+    glVertex3f(cube_size / 2, -cube_size / 2, cube_size / 2);
+    glVertex3f(cube_size / 2, -cube_size / 2, -cube_size / 2);
+    glVertex3f(-cube_size / 2, -cube_size / 2, -cube_size / 2);
+
     // 后面
     glNormal3f(0.0f, 1.0f, 0.0f);
-    glVertex3f(-cube_size/2, cube_size/2, -cube_size/2);
-    glVertex3f(cube_size/2, cube_size/2, -cube_size/2);
-    glVertex3f(cube_size/2, cube_size/2, cube_size/2);
-    glVertex3f(-cube_size/2, cube_size/2, cube_size/2);
-    
+    glVertex3f(-cube_size / 2, cube_size / 2, -cube_size / 2);
+    glVertex3f(cube_size / 2, cube_size / 2, -cube_size / 2);
+    glVertex3f(cube_size / 2, cube_size / 2, cube_size / 2);
+    glVertex3f(-cube_size / 2, cube_size / 2, cube_size / 2);
+
     // 顶面
     glNormal3f(0.0f, 0.0f, 1.0f);
-    glVertex3f(-cube_size/2, -cube_size/2, cube_size/2);
-    glVertex3f(-cube_size/2, cube_size/2, cube_size/2);
-    glVertex3f(cube_size/2, cube_size/2, cube_size/2);
-    glVertex3f(cube_size/2, -cube_size/2, cube_size/2);
-    
+    glVertex3f(-cube_size / 2, -cube_size / 2, cube_size / 2);
+    glVertex3f(-cube_size / 2, cube_size / 2, cube_size / 2);
+    glVertex3f(cube_size / 2, cube_size / 2, cube_size / 2);
+    glVertex3f(cube_size / 2, -cube_size / 2, cube_size / 2);
+
     // 底面
     glNormal3f(0.0f, 0.0f, -1.0f);
-    glVertex3f(-cube_size/2, -cube_size/2, -cube_size/2);
-    glVertex3f(cube_size/2, -cube_size/2, -cube_size/2);
-    glVertex3f(cube_size/2, cube_size/2, -cube_size/2);
-    glVertex3f(-cube_size/2, cube_size/2, -cube_size/2);
-    
+    glVertex3f(-cube_size / 2, -cube_size / 2, -cube_size / 2);
+    glVertex3f(cube_size / 2, -cube_size / 2, -cube_size / 2);
+    glVertex3f(cube_size / 2, cube_size / 2, -cube_size / 2);
+    glVertex3f(-cube_size / 2, cube_size / 2, -cube_size / 2);
+
     // 右面
     glNormal3f(1.0f, 0.0f, 0.0f);
-    glVertex3f(cube_size/2, -cube_size/2, -cube_size/2);
-    glVertex3f(cube_size/2, -cube_size/2, cube_size/2);
-    glVertex3f(cube_size/2, cube_size/2, cube_size/2);
-    glVertex3f(cube_size/2, cube_size/2, -cube_size/2);
-    
+    glVertex3f(cube_size / 2, -cube_size / 2, -cube_size / 2);
+    glVertex3f(cube_size / 2, -cube_size / 2, cube_size / 2);
+    glVertex3f(cube_size / 2, cube_size / 2, cube_size / 2);
+    glVertex3f(cube_size / 2, cube_size / 2, -cube_size / 2);
+
     // 左面
     glNormal3f(-1.0f, 0.0f, 0.0f);
-    glVertex3f(-cube_size/2, -cube_size/2, -cube_size/2);
-    glVertex3f(-cube_size/2, cube_size/2, -cube_size/2);
-    glVertex3f(-cube_size/2, cube_size/2, cube_size/2);
-    glVertex3f(-cube_size/2, -cube_size/2, cube_size/2);
-    
+    glVertex3f(-cube_size / 2, -cube_size / 2, -cube_size / 2);
+    glVertex3f(-cube_size / 2, cube_size / 2, -cube_size / 2);
+    glVertex3f(-cube_size / 2, cube_size / 2, cube_size / 2);
+    glVertex3f(-cube_size / 2, -cube_size / 2, cube_size / 2);
+
     glEnd();
-    
+
     glPopMatrix();
 }
 // ---------------- 初始化光照 ----------------
@@ -499,7 +505,7 @@ void initLighting()
     glColorMaterial(GL_FRONT, GL_AMBIENT_AND_DIFFUSE);
 
     // 设置 GL_LIGHT0 的属性（主光源）
-    GLfloat ambient0[] = {0.7f, 0.7f, 0.7f, 1.0f};  // 偏暖的环境光
+    GLfloat ambient0[] = {0.7f, 0.7f, 0.7f, 1.0f};   // 偏暖的环境光
     GLfloat diffuse0[] = {2.0f, 1.8f, 1.6f, 1.0f};   // 偏黄的漫反射光
     GLfloat specular0[] = {1.0f, 0.95f, 0.9f, 1.0f}; // 略微发黄的高光
     glLightfv(GL_LIGHT0, GL_AMBIENT, ambient0);
@@ -536,7 +542,6 @@ void initLighting()
     glClearColor(0.15f, 0.12f, 0.1f, 1.0f); // 深褐色背景
 }
 
-// ---------------- 更新光照 ----------------
 void updateLighting()
 {
     // 计算当前位置到中心的距离
@@ -556,26 +561,30 @@ void updateLighting()
         adjusted_intensity = 0.1f;
     }
 
-    // 应用光照强度
-    GLfloat ambient0[] = {0.4f * adjusted_intensity, 0.4f * adjusted_intensity, 0.4f * adjusted_intensity, 1.0f};
-    GLfloat diffuse0[] = {2.0f * adjusted_intensity, 1.9f * adjusted_intensity, 1.7f * adjusted_intensity, 1.0f};
+    // 应用光照强度，调整比例以避免过亮
+    GLfloat ambient0[] = {0.3f * adjusted_intensity, 0.3f * adjusted_intensity, 0.3f * adjusted_intensity, 1.0f};
+    GLfloat diffuse0[] = {2.0f * adjusted_intensity, 1.8f * adjusted_intensity, 1.6f * adjusted_intensity, 1.0f};
 
-        // 计算光源位置
+    // 计算光源位置
     float base_z = -5.0f + base_height;
     float lamp_z = base_z + hemisphere_radius;
-    
+
     GLfloat position0[] = {lamp_x, lamp_y, lamp_z, 1.0f};
 
     glLightfv(GL_LIGHT0, GL_POSITION, position0);
     glLightfv(GL_LIGHT0, GL_AMBIENT, ambient0);
     glLightfv(GL_LIGHT0, GL_DIFFUSE, diffuse0);
 
+    adjusted_intensity += 0.7f;
+
+    GLfloat global_ambient[] = {0.2f * adjusted_intensity, 0.2f * adjusted_intensity, 0.2f * adjusted_intensity, 1.0f};
+    glLightModelfv(GL_LIGHT_MODEL_AMBIENT, global_ambient);
     // 根据灯的状态设置衰减
     if (lightOn && use_custom_atten)
     {
         GLfloat constant = 1.0f;
-        GLfloat linear = 0.02f;
-        GLfloat quadratic = 0.005f;
+        GLfloat linear = 0.2f;
+        GLfloat quadratic = 0.5f;
         glLightf(GL_LIGHT0, GL_CONSTANT_ATTENUATION, constant);
         glLightf(GL_LIGHT0, GL_LINEAR_ATTENUATION, linear);
         glLightf(GL_LIGHT0, GL_QUADRATIC_ATTENUATION, quadratic);
@@ -604,14 +613,14 @@ void drawBase()
     glBindTexture(GL_TEXTURE_2D, baseTexture); // 假设你把底座纹理存到 baseTexture 里
 
     // 设置材质属性（可根据需要调节）
-    GLfloat mat_ambient[]  = {0.3f, 0.3f, 0.3f, 1.0f};
-    GLfloat mat_diffuse[]  = {0.8f, 0.8f, 0.8f, 1.0f}; 
+    GLfloat mat_ambient[] = {0.3f, 0.3f, 0.3f, 1.0f};
+    GLfloat mat_diffuse[] = {0.8f, 0.8f, 0.8f, 1.0f};
     GLfloat mat_specular[] = {0.5f, 0.5f, 0.5f, 1.0f};
     GLfloat mat_shininess[] = {32.0f};
 
-    glMaterialfv(GL_FRONT, GL_AMBIENT,   mat_ambient);
-    glMaterialfv(GL_FRONT, GL_DIFFUSE,   mat_diffuse);
-    glMaterialfv(GL_FRONT, GL_SPECULAR,  mat_specular);
+    glMaterialfv(GL_FRONT, GL_AMBIENT, mat_ambient);
+    glMaterialfv(GL_FRONT, GL_DIFFUSE, mat_diffuse);
+    glMaterialfv(GL_FRONT, GL_SPECULAR, mat_specular);
     glMaterialfv(GL_FRONT, GL_SHININESS, mat_shininess);
 
     // 让颜色与材质配合，此处使用接近白色(主要依赖纹理颜色)
@@ -620,7 +629,7 @@ void drawBase()
     //-------------------------------------
     // 2. 创建 Quadric 并启用自动生成纹理坐标
     //-------------------------------------
-    GLUquadric* quad = gluNewQuadric();
+    GLUquadric *quad = gluNewQuadric();
     gluQuadricNormals(quad, GLU_SMOOTH);
     gluQuadricTexture(quad, GL_TRUE); // 让该 quad 自动生成纹理坐标
 
@@ -652,64 +661,67 @@ float calculateCurrentBrightness()
     intensity_factor = fmax(intensity_factor, 0.3f); // 保持最小亮度
 
     // 根据当前模式调整亮度计算
-    switch (currentMode) {
-        case NORMAL:
-            return light_intensity * intensity_factor;
-        case ALARM:
-            return min_light_intensity + (1.0f - min_light_intensity) * intensity_factor;
-        case ATMOSPHERE:
-            return 0.8f * intensity_factor; // 可以根据需要调整
-        default:
-            return 0.0f;
+    switch (currentMode)
+    {
+    case NORMAL:
+        return light_intensity * intensity_factor;
+    case ALARM:
+        return min_light_intensity + (1.0f - min_light_intensity) * intensity_factor;
+    case ATMOSPHERE:
+        return 0.8f * intensity_factor; // 可以根据需要调整
+    default:
+        return 0.0f;
     }
 }
 
-void drawLampCover() {
+void drawLampCover()
+{
     glPushMatrix();
-    
+
     // 计算灯罩位置：地面(-5.0f) + 底座高度 + 灯罩半径
     float base_z = -5.0f + base_height;
-    float lamp_z = base_z + hemisphere_radius*0.5;
-    
+    float lamp_z = base_z + hemisphere_radius * 0.5;
+
     // 移动到灯罩位置
     glTranslatef(lamp_x, lamp_y, lamp_z);
-    
+
     // 更透明的灯罩材质
     GLfloat glass_ambient[] = {0.1f, 0.1f, 0.1f, 0.2f};
-    GLfloat glass_diffuse[] = {0.7f, 0.7f, 0.7f, 0.15f};  // 更透明
+    GLfloat glass_diffuse[] = {0.7f, 0.7f, 0.7f, 0.15f}; // 更透明
     GLfloat glass_specular[] = {1.0f, 1.0f, 1.0f, 0.2f};
     GLfloat glass_shininess[] = {128.0f};
-    
-    if (lightOn) {
+
+    if (lightOn)
+    {
         // 灯亮时的内部发光效果，根据位置调整亮度
         float brightness = calculateCurrentBrightness();
         GLfloat glass_emission[] = {
             0.4f * brightness,
             0.4f * brightness,
             0.35f * brightness,
-            0.3f
-        };
+            0.3f};
         glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, glass_emission);
     }
-    
+
     glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, glass_ambient);
     glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, glass_diffuse);
     glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, glass_specular);
     glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, glass_shininess);
-    
+
     // 双面渲染和混合设置
     glDisable(GL_CULL_FACE);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    
+
     // 绘制内外两层灯罩
     GLUquadric *quad = gluNewQuadric();
     gluQuadricNormals(quad, GLU_SMOOTH);
-    
+
     // 外层灯罩
     gluSphere(quad, hemisphere_radius, 50, 50);
-    
-    if (lightOn) {
+
+    if (lightOn)
+    {
         // 内层发光层，同样根据位置调整亮度
         float brightness = calculateCurrentBrightness();
         glBlendFunc(GL_SRC_ALPHA, GL_ONE);
@@ -717,35 +729,35 @@ void drawLampCover() {
             0.6f * brightness,
             0.6f * brightness,
             0.5f * brightness,
-            0.4f
-        };
+            0.4f};
         glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, inner_emission);
         gluSphere(quad, hemisphere_radius * 0.95f, 50, 50);
     }
-    
+
     gluDeleteQuadric(quad);
     glEnable(GL_CULL_FACE);
     glDisable(GL_BLEND);
-    
+
     // 重置发光
     GLfloat no_emission[] = {0.0f, 0.0f, 0.0f, 1.0f};
     glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, no_emission);
-    
+
     glPopMatrix();
 }
 
-void drawLightSource() {
+void drawLightSource()
+{
     if (!lightOn)
         return;
 
     glPushMatrix();
-    
+
     // 计算光源位置：与灯罩位置相同
     float base_z = -5.0f + base_height;
     float lamp_z = base_z + hemisphere_radius;
-    
+
     glTranslatef(lamp_x, lamp_y, lamp_z);
-    
+
     // 计算当前亮度
     float brightness = calculateCurrentBrightness() * light_intensity;
 
@@ -793,83 +805,94 @@ void drawLightSource() {
 }
 
 /// 修改后的绘制地面和墙壁函数，应用纹理
-void drawGround() {
+void drawGround()
+{
     glPushMatrix();
-    
+
     glEnable(GL_TEXTURE_2D);
     glBindTexture(GL_TEXTURE_2D, groundTexture);
-    
+
     // 设置材质属性
     GLfloat mat_ambient[] = {0.25f, 0.22f, 0.2f, 1.0f};
     GLfloat mat_diffuse[] = {0.35f, 0.32f, 0.3f, 1.0f};
     GLfloat mat_specular[] = {0.5f, 0.47f, 0.45f, 1.0f};
     GLfloat mat_shininess[] = {25.0f};
-    
+
     glMaterialfv(GL_FRONT, GL_AMBIENT, mat_ambient);
     glMaterialfv(GL_FRONT, GL_DIFFUSE, mat_diffuse);
     glMaterialfv(GL_FRONT, GL_SPECULAR, mat_specular);
     glMaterialfv(GL_FRONT, GL_SHININESS, mat_shininess);
-    
+
     // 绘制带纹理的地面
     glColor3f(1.0f, 1.0f, 1.0f); // 使用纯白色以显示纹理颜色
     glBegin(GL_QUADS);
     glNormal3f(0.0f, 0.0f, 1.0f);
-    glTexCoord2f(0.0f, 0.0f); glVertex3f(-10.0f, -10.0f, -5.0f);
-    glTexCoord2f(10.0f, 0.0f); glVertex3f(10.0f, -10.0f, -5.0f);
-    glTexCoord2f(10.0f, 10.0f); glVertex3f(10.0f, 10.0f, -5.0f);
-    glTexCoord2f(0.0f, 10.0f); glVertex3f(-10.0f, 10.0f, -5.0f);
+    glTexCoord2f(0.0f, 0.0f);
+    glVertex3f(-10.0f, -10.0f, -5.0f);
+    glTexCoord2f(10.0f, 0.0f);
+    glVertex3f(10.0f, -10.0f, -5.0f);
+    glTexCoord2f(10.0f, 10.0f);
+    glVertex3f(10.0f, 10.0f, -5.0f);
+    glTexCoord2f(0.0f, 10.0f);
+    glVertex3f(-10.0f, 10.0f, -5.0f);
     glEnd();
-    
+
     glDisable(GL_TEXTURE_2D);
     glPopMatrix();
 }
 
-void drawWalls() {
+void drawWalls()
+{
     glPushMatrix();
-    
+
     glEnable(GL_TEXTURE_2D);
     glBindTexture(GL_TEXTURE_2D, wallTexture);
-    
+
     // 设置材质属性
     GLfloat mat_ambient[] = {0.25f, 0.22f, 0.2f, 1.0f};
     GLfloat mat_diffuse[] = {0.35f, 0.32f, 0.3f, 1.0f};
     GLfloat mat_specular[] = {0.5f, 0.47f, 0.45f, 1.0f};
     GLfloat mat_shininess[] = {25.0f};
-    
+
     glMaterialfv(GL_FRONT, GL_AMBIENT, mat_ambient);
     glMaterialfv(GL_FRONT, GL_DIFFUSE, mat_diffuse);
     glMaterialfv(GL_FRONT, GL_SPECULAR, mat_specular);
     glMaterialfv(GL_FRONT, GL_SHININESS, mat_shininess);
-    
+
     glColor3f(1.0f, 1.0f, 1.0f); // 确保纹理颜色不被修改
-    
+
     float wall_height = 10.0f; // 从z=-5到z=5
     float wall_length = 10.0f; // 从x=-5到x=5 或 y=-5到y=5
-    
+
     // 左墙 (x = -5.0)
     glBegin(GL_QUADS);
     glNormal3f(1.0f, 0.0f, 0.0f); // 法向量指向右侧
-    glTexCoord2f(0.0f, 0.0f); glVertex3f(-5.0f, -10.0f, -10.0f);
-    glTexCoord2f(10.0f, 0.0f); glVertex3f(-5.0f, 10.0f, -10.0f);
-    glTexCoord2f(10.0f, 10.0f); glVertex3f(-5.0f, 10.0f, 10.0f);
-    glTexCoord2f(0.0f, 10.0f); glVertex3f(-5.0f, -10.0f, 10.0f);
+    glTexCoord2f(0.0f, 0.0f);
+    glVertex3f(-5.0f, -10.0f, -10.0f);
+    glTexCoord2f(10.0f, 0.0f);
+    glVertex3f(-5.0f, 10.0f, -10.0f);
+    glTexCoord2f(10.0f, 10.0f);
+    glVertex3f(-5.0f, 10.0f, 10.0f);
+    glTexCoord2f(0.0f, 10.0f);
+    glVertex3f(-5.0f, -10.0f, 10.0f);
     glEnd();
-    
-    
+
     // 前墙 (y = 5.0)
     glBegin(GL_QUADS);
     glNormal3f(0.0f, -1.0f, 0.0f); // 法向量指向后方
-    glTexCoord2f(0.0f, 0.0f); glVertex3f(-10.0f, 5.0f, -10.0f);
-    glTexCoord2f(10.0f, 0.0f); glVertex3f(10.0f, 5.0f, -10.0f);
-    glTexCoord2f(10.0f, 10.0f); glVertex3f(10.0f, 5.0f, 10.0f);
-    glTexCoord2f(0.0f, 10.0f); glVertex3f(-10.0f, 5.0f, 10.0f);
+    glTexCoord2f(0.0f, 0.0f);
+    glVertex3f(-10.0f, 5.0f, -10.0f);
+    glTexCoord2f(10.0f, 0.0f);
+    glVertex3f(10.0f, 5.0f, -10.0f);
+    glTexCoord2f(10.0f, 10.0f);
+    glVertex3f(10.0f, 5.0f, 10.0f);
+    glTexCoord2f(0.0f, 10.0f);
+    glVertex3f(-10.0f, 5.0f, 10.0f);
     glEnd();
-    
+
     glDisable(GL_TEXTURE_2D);
     glPopMatrix();
 }
-
-
 
 // ---------------- 限制灯罩位置 ----------------
 void restrictLampPosition()
@@ -885,7 +908,8 @@ void restrictLampPosition()
 
 // ---------------- 更新摄像机位置 ----------------
 // 更新摄像机位置的函数
-void updateCamera() {
+void updateCamera()
+{
     float rad_x = camera_angle_x * M_PI / 180.0f;
     float rad_y = camera_angle_y * M_PI / 180.0f;
 
@@ -910,16 +934,16 @@ void resetAtmosphereMode()
     light_intensity = 1.0f;
     current_intensity = 1.0f;
 
-        // 启用粒子效果
+    // 启用粒子效果
     resetParticles();
 }
 // 检查粒子是否与墙面相交
-bool isParticleIntersectingWalls(const Particle& p)
+bool isParticleIntersectingWalls(const Particle &p)
 {
-    const float WALL_THRESHOLD = 1.0f;     // 增加阈值使检测范围更大
-    const float WALL_RANGE = 10.0f;        // 增加墙面范围
-    const float FLOOR_LEVEL = -5.0f;       // 地面高度
-    
+    const float WALL_THRESHOLD = 1.0f; // 增加阈值使检测范围更大
+    const float WALL_RANGE = 10.0f;    // 增加墙面范围
+    const float FLOOR_LEVEL = -5.0f;   // 地面高度
+
     // 检测与左墙面的相交 (x = -5.0)
     if (fabs(p.x + 5.0f) < WALL_THRESHOLD &&
         p.y >= -WALL_RANGE && p.y <= WALL_RANGE &&
@@ -948,7 +972,7 @@ bool isParticleIntersectingWalls(const Particle& p)
 }
 
 // 初始化粒子
-void initParticle(Particle& p)
+void initParticle(Particle &p)
 {
     // 从光源位置发出
     p.x = lamp_x;
@@ -992,7 +1016,7 @@ void updateParticles()
     }
 
     // 更新所有粒子
-    for (auto& p : particles)
+    for (auto &p : particles)
     {
         // 更新位置
         p.x += p.vx;
@@ -1019,22 +1043,22 @@ void computeShadowMatrix(GLfloat shadowMat[4][4], const GLfloat plane[4], const 
                   plane[1] * lightPos[1] +
                   plane[2] * lightPos[2] +
                   plane[3] * lightPos[3];
-    
+
     shadowMat[0][0] = dot - lightPos[0] * plane[0];
     shadowMat[0][1] = 0.0f - lightPos[0] * plane[1];
     shadowMat[0][2] = 0.0f - lightPos[0] * plane[2];
     shadowMat[0][3] = 0.0f - lightPos[0] * plane[3];
-    
+
     shadowMat[1][0] = 0.0f - lightPos[1] * plane[0];
     shadowMat[1][1] = dot - lightPos[1] * plane[1];
     shadowMat[1][2] = 0.0f - lightPos[1] * plane[2];
     shadowMat[1][3] = 0.0f - lightPos[1] * plane[3];
-    
+
     shadowMat[2][0] = 0.0f - lightPos[2] * plane[0];
     shadowMat[2][1] = 0.0f - lightPos[2] * plane[1];
     shadowMat[2][2] = dot - lightPos[2] * plane[2];
     shadowMat[2][3] = 0.0f - lightPos[2] * plane[3];
-    
+
     shadowMat[3][0] = 0.0f - lightPos[3] * plane[0];
     shadowMat[3][1] = 0.0f - lightPos[3] * plane[1];
     shadowMat[3][2] = 0.0f - lightPos[3] * plane[2];
@@ -1046,7 +1070,7 @@ void resetParticles()
 {
     particles.clear(); // 清除现有粒子
     // 重新初始化所有粒子
-    for(int i = 0; i < MAX_PARTICLES; i++)
+    for (int i = 0; i < MAX_PARTICLES; i++)
     {
         Particle p;
         initParticle(p);
@@ -1065,8 +1089,8 @@ void drawParticles()
     glPointSize(5.0f); // 增大点的大小
 
     glBegin(GL_POINTS);
-    for (const auto& p : particles)
-    {   
+    for (const auto &p : particles)
+    {
         // printf("p_x:%f,p_y:%f,p_z:%f",p.x,p.y,p.z);
         // 增加亮度，使相交点更明显
         // 只绘制与墙面相交的粒子
@@ -1085,7 +1109,6 @@ void drawParticles()
     glEnable(GL_LIGHTING);
     glPopMatrix();
 }
-
 
 // ---------------- 渲染位图字符串 ----------------
 void renderBitmapString(float x, float y, float z, void *font, const char *string)
@@ -1110,7 +1133,7 @@ void display()
 {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     updateLightPosition();
-    
+
     // 设置透视投影
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
@@ -1122,7 +1145,7 @@ void display()
     updateCamera();
     float base_z = -5.0f + base_height;
     float lamp_z = base_z + hemisphere_radius;
-    gluLookAt(-camera_x, -camera_y, camera_distance ,
+    gluLookAt(-camera_x, -camera_y, camera_distance,
               lamp_x, lamp_y, lamp_z,
               0.0, 0.0, 0.01);
 
@@ -1132,33 +1155,33 @@ void display()
     glEnable(GL_POLYGON_OFFSET_FILL);
     // 这两个参数可根据实际情况微调，(factor, units) 都可以适当加大一点
     glPolygonOffset(-1.0f, -1.0f);
-    if (lightOn && currentMode!=ATMOSPHERE)
+    if (lightOn && currentMode != ATMOSPHERE)
     {
-        drawShadow();  
+        drawShadow();
     }
     // 绘制完成后关闭偏移
     glDisable(GL_POLYGON_OFFSET_FILL);
     drawBase();
     drawLightSource();
     drawLampCover();
-
-    if (currentMode != ATMOSPHERE){
+    if (currentMode != ATMOSPHERE)
+    {
         glDisable(GL_CULL_FACE);
         drawDrinkingMug();
         glEnable(GL_CULL_FACE);
     }
-    
+
     // 如果是Atmosphere模式且灯光开启，则绘制粒子效果
-    if (currentMode == ATMOSPHERE )
+    if (currentMode == ATMOSPHERE)
     {
         glPushMatrix();
-        if (!lightOn) {  // 只在灯开启时更新和绘制粒子
+        if (!lightOn)
+        { // 只在灯开启时更新和绘制粒子
             updateParticles();
             drawParticles();
         }
         glPopMatrix();
     }
-
 
     // 2. 绘制2D UI (按钮)
     glMatrixMode(GL_PROJECTION);
@@ -1180,7 +1203,7 @@ void display()
     // 3. 绘制时间信息 (在右下角)
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
-    gluOrtho2D(0, glutGet(GLUT_WINDOW_WIDTH)+100, 0, glutGet(GLUT_WINDOW_HEIGHT));
+    gluOrtho2D(0, glutGet(GLUT_WINDOW_WIDTH) + 100, 0, glutGet(GLUT_WINDOW_HEIGHT));
 
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
@@ -1247,7 +1270,7 @@ void display()
         glColor4f(1.0f, 1.0f, 1.0f, 1.0f); // 白色文字
         for (int i = 0; i < 3; i++)
         { // 模拟加粗效果
-            glRasterPos2f(text_x1 + i * 0.5f+10, text_y1);
+            glRasterPos2f(text_x1 + i * 0.5f + 10, text_y1);
             const char *text1 = "Current Time:";
             for (const char *c = text1; *c != '\0'; c++)
             {
@@ -1259,7 +1282,7 @@ void display()
         float text_x2 = windowWidth - 200;
         for (int i = 0; i < 1; i++)
         { // 模拟加粗效果
-            glRasterPos2f(text_x2 + i * 50.0f+150, text_y1);
+            glRasterPos2f(text_x2 + i * 50.0f + 150, text_y1);
             for (const char *c = currentTimeStr; *c != '\0'; c++)
             {
                 glutBitmapCharacter(font, *c);
@@ -1270,7 +1293,7 @@ void display()
         float text_y2 = 40; // 高度调整
         for (int i = 0; i < 3; i++)
         { // 模拟加粗效果
-            glRasterPos2f(text_x1 + i * 0.5f+10, text_y2);
+            glRasterPos2f(text_x1 + i * 0.5f + 10, text_y2);
             const char *text2 = "Alarm Time:";
             for (const char *c = text2; *c != '\0'; c++)
             {
@@ -1281,7 +1304,7 @@ void display()
         // 闹钟时间
         for (int i = 0; i < 1; i++)
         { // 模拟加粗效果
-            glRasterPos2f(text_x2 + i * 50.0f+150, text_y2);
+            glRasterPos2f(text_x2 + i * 50.0f + 150, text_y2);
             for (const char *c = alarmTimeStr; *c != '\0'; c++)
             {
                 glutBitmapCharacter(font, *c);
@@ -1296,18 +1319,19 @@ void display()
     // 显示模式信息
     glColor3f(1.0f, 1.0f, 1.0f);
     char modeStr[20];
-    switch (currentMode) {
-        case NORMAL:
-            strcpy(modeStr, "Mode: Normal");
-            break;
-        case ALARM:
-            strcpy(modeStr, "Mode: Alarm");
-            break;
-        case ATMOSPHERE:
-            strcpy(modeStr, "Mode: Atmosphere");
-            break;
-        default:
-            strcpy(modeStr, "Mode: Unknown");
+    switch (currentMode)
+    {
+    case NORMAL:
+        strcpy(modeStr, "Mode: Normal");
+        break;
+    case ALARM:
+        strcpy(modeStr, "Mode: Alarm");
+        break;
+    case ATMOSPHERE:
+        strcpy(modeStr, "Mode: Atmosphere");
+        break;
+    default:
+        strcpy(modeStr, "Mode: Unknown");
     }
 
     glEnable(GL_BLEND);
@@ -1343,8 +1367,8 @@ void display()
     {
         text_width_calc += glutBitmapWidth(GLUT_BITMAP_HELVETICA_18, *c);
     }
-    float text_x =120 - text_width_calc / 2;
-    float text_y = 65;                   // 垂直位置
+    float text_x = 120 - text_width_calc / 2;
+    float text_y = 65; // 垂直位置
 
     // 绘制主文本
     glColor4f(1.0f, 1.0f, 1.0f, 1.0f); // 设置为完全不透明的白色文字
@@ -1360,7 +1384,7 @@ void display()
     glEnable(GL_LIGHTING);
     glutSwapBuffers();
 }
-GLuint loadTexture(const char* filename)
+GLuint loadTexture(const char *filename)
 {
     int width, height, nrChannels;
     // Flip images vertically since OpenGL expects 0.0 on y to be bottom
@@ -1391,7 +1415,7 @@ GLuint loadTexture(const char* filename)
     glGenerateMipmap(GL_TEXTURE_2D);
 
     // Set texture parameters
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);	
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR); // use mipmaps
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -1403,7 +1427,7 @@ GLuint loadTexture(const char* filename)
 void loadTextures()
 {
     groundTexture = loadTexture("src/image copy 9.png"); // 替换为您的地面纹理文件
-    wallTexture = loadTexture("src/image copy 11.png");     // 替换为您的墙壁纹理文件
+    wallTexture = loadTexture("src/image copy 11.png");  // 替换为您的墙壁纹理文件
     baseTexture = loadTexture("src/image copy 6.png");
     cupTexture = loadTexture("src/image.png");
 
@@ -1480,18 +1504,19 @@ void handleKeyboard(unsigned char key, int x, int y)
             resetAtmosphereMode();
         }
         printf("Switched to ");
-        switch (currentMode) {
-            case NORMAL:
-                printf("Normal mode.\n");
-                break;
-            case ALARM:
-                printf("Alarm mode.\n");
-                break;
-            case ATMOSPHERE:
-                printf("Atmosphere mode.\n");
-                break;
-            default:
-                printf("Unknown mode.\n");
+        switch (currentMode)
+        {
+        case NORMAL:
+            printf("Normal mode.\n");
+            break;
+        case ALARM:
+            printf("Alarm mode.\n");
+            break;
+        case ATMOSPHERE:
+            printf("Atmosphere mode.\n");
+            break;
+        default:
+            printf("Unknown mode.\n");
         }
         glutPostRedisplay();
         break;
@@ -1510,55 +1535,58 @@ void handleKeyboard(unsigned char key, int x, int y)
         exit(0);
     }
 }
-void init() {
+void init()
+{
     glClearColor(0.0, 0.0, 0.0, 1.0);
     glEnable(GL_DEPTH_TEST);
-    
+
     // 启用光照
     glEnable(GL_LIGHTING);
     glEnable(GL_LIGHT0);
     glShadeModel(GL_SMOOTH);
-    
+
     glViewport(100, 100, 600, 400);
-    
+
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
-    glOrtho(-10.0, 10.0, -10.0, 10.0, -10.0, 10.0);  // 修改正交投影范围
-    
+    glOrtho(-10.0, 10.0, -10.0, 10.0, -10.0, 10.0); // 修改正交投影范围
+
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
     // 在这里设置固定的视角
-    glRotatef(30.0f, 1.0f, 0.0f, 0.0f); // 绕X轴旋转30度
+    glRotatef(30.0f, 1.0f, 0.0f, 0.0f);  // 绕X轴旋转30度
     glRotatef(-45.0f, 0.0f, 1.0f, 0.0f); // 绕Y轴旋转45度
 
     // 设置点的大小
     glPointSize(3.0f);
-    
+
     // 设置光照参数
     GLfloat light_position[] = {-4.0f, -4.0f, -4.0f, 1.0f};
     GLfloat light_ambient[] = {0.2f, 0.2f, 0.2f, 1.0f};
     GLfloat light_diffuse[] = {1.0f, 0.8f, 0.6f, 1.0f};
-    
+
     glLightfv(GL_LIGHT0, GL_POSITION, light_position);
     glLightfv(GL_LIGHT0, GL_AMBIENT, light_ambient);
     glLightfv(GL_LIGHT0, GL_DIFFUSE, light_diffuse);
 }
 
 // ---------------- 特殊键事件 ----------------
-void handleSpecialKey(int key, int x, int y) {
-    switch (key) {
-        case GLUT_KEY_UP:
-            camera_angle_x += 5.0f;
-            break; // 向上看
-        case GLUT_KEY_DOWN:
-            camera_angle_x -= 5.0f;
-            break; // 向下看
-        case GLUT_KEY_LEFT:
-            camera_angle_y -= 5.0f;
-            break; // 向左看
-        case GLUT_KEY_RIGHT:
-            camera_angle_y += 5.0f;
-            break; // 向右看
+void handleSpecialKey(int key, int x, int y)
+{
+    switch (key)
+    {
+    case GLUT_KEY_UP:
+        camera_angle_x += 5.0f;
+        break; // 向上看
+    case GLUT_KEY_DOWN:
+        camera_angle_x -= 5.0f;
+        break; // 向下看
+    case GLUT_KEY_LEFT:
+        camera_angle_y -= 5.0f;
+        break; // 向左看
+    case GLUT_KEY_RIGHT:
+        camera_angle_y += 5.0f;
+        break; // 向右看
     }
 
     // 限制俯仰角在 -89 到 89 度之间
@@ -1637,18 +1665,19 @@ void handleMouse(int button, int state, int x, int y)
                             resetAtmosphereMode();
                         }
                         printf("Switched to ");
-                        switch (currentMode) {
-                            case NORMAL:
-                                printf("Normal mode.\n");
-                                break;
-                            case ALARM:
-                                printf("Alarm mode.\n");
-                                break;
-                            case ATMOSPHERE:
-                                printf("Atmosphere mode.\n");
-                                break;
-                            default:
-                                printf("Unknown mode.\n");
+                        switch (currentMode)
+                        {
+                        case NORMAL:
+                            printf("Normal mode.\n");
+                            break;
+                        case ALARM:
+                            printf("Alarm mode.\n");
+                            break;
+                        case ATMOSPHERE:
+                            printf("Atmosphere mode.\n");
+                            break;
+                        default:
+                            printf("Unknown mode.\n");
                         }
                     }
                 }
@@ -2020,7 +2049,8 @@ void drawButton(const Button &btn)
     glDisable(GL_BLEND);
     glPopMatrix();
 }
-void idle() {
+void idle()
+{
     glutPostRedisplay();
 }
 // ---------------- 主函数 ----------------
