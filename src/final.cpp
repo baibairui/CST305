@@ -810,7 +810,7 @@ void display()
     if (currentMode == ATMOSPHERE )
     {
         glPushMatrix();
-        if (lightOn) {  // 只在灯开启时更新和绘制粒子
+        if (!lightOn) {  // 只在灯开启时更新和绘制粒子
             updateParticles();
             drawParticles();
         }
@@ -888,7 +888,7 @@ void display()
     // 3. 绘制时间信息 (在右下角)
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
-    gluOrtho2D(0, glutGet(GLUT_WINDOW_WIDTH), 0, glutGet(GLUT_WINDOW_HEIGHT));
+    gluOrtho2D(0, glutGet(GLUT_WINDOW_WIDTH)+100, 0, glutGet(GLUT_WINDOW_HEIGHT));
 
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
@@ -936,10 +936,10 @@ void display()
         glLineWidth(2.0f);
         glColor4f(1.0f, 1.0f, 1.0f, 0.9f); // 边框颜色：白色
         glBegin(GL_LINE_LOOP);
-        glVertex2f(windowWidth - 300, 20);
-        glVertex2f(windowWidth - 20, 20);
-        glVertex2f(windowWidth - 20, 110);
-        glVertex2f(windowWidth - 300, 110);
+        glVertex2f(windowWidth - 200, 20);
+        glVertex2f(windowWidth + 80, 20);
+        glVertex2f(windowWidth + 80, 110);
+        glVertex2f(windowWidth - 200, 110);
         glEnd();
         glLineWidth(1.0f);
 
@@ -955,7 +955,7 @@ void display()
         glColor4f(1.0f, 1.0f, 1.0f, 1.0f); // 白色文字
         for (int i = 0; i < 3; i++)
         { // 模拟加粗效果
-            glRasterPos2f(text_x1 + i * 0.5f, text_y1);
+            glRasterPos2f(text_x1 + i * 0.5f+10, text_y1);
             const char *text1 = "Current Time:";
             for (const char *c = text1; *c != '\0'; c++)
             {
@@ -964,10 +964,10 @@ void display()
         }
 
         // 当前时间
-        float text_x2 = windowWidth - 100;
-        for (int i = 0; i < 3; i++)
+        float text_x2 = windowWidth - 200;
+        for (int i = 0; i < 1; i++)
         { // 模拟加粗效果
-            glRasterPos2f(text_x2 + i * 0.5f, text_y1);
+            glRasterPos2f(text_x2 + i * 50.0f+150, text_y1);
             for (const char *c = currentTimeStr; *c != '\0'; c++)
             {
                 glutBitmapCharacter(font, *c);
@@ -978,7 +978,7 @@ void display()
         float text_y2 = 40; // 高度调整
         for (int i = 0; i < 3; i++)
         { // 模拟加粗效果
-            glRasterPos2f(text_x1 + i * 0.5f, text_y2);
+            glRasterPos2f(text_x1 + i * 0.5f+10, text_y2);
             const char *text2 = "Alarm Time:";
             for (const char *c = text2; *c != '\0'; c++)
             {
@@ -987,9 +987,9 @@ void display()
         }
 
         // 闹钟时间
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < 1; i++)
         { // 模拟加粗效果
-            glRasterPos2f(text_x2 + i * 0.5f, text_y2);
+            glRasterPos2f(text_x2 + i * 50.0f+150, text_y2);
             for (const char *c = alarmTimeStr; *c != '\0'; c++)
             {
                 glutBitmapCharacter(font, *c);
@@ -1035,10 +1035,10 @@ void display()
     glLineWidth(2.0f);
     glColor4f(1.0f, 1.0f, 1.0f, 0.9f); // 边框颜色：白色
     glBegin(GL_LINE_LOOP);
-    glVertex2f(windowWidth - 220, 20);
-    glVertex2f(windowWidth - 20, 20);
-    glVertex2f(windowWidth - 20, 110);
-    glVertex2f(windowWidth - 220, 110);
+    glVertex2f(windowWidth - 1490, 20);
+    glVertex2f(windowWidth - 1290, 20);
+    glVertex2f(windowWidth - 1290, 110);
+    glVertex2f(windowWidth - 1490, 110);
     glEnd();
     glLineWidth(1.0f);
 
@@ -1051,7 +1051,7 @@ void display()
     {
         text_width_calc += glutBitmapWidth(GLUT_BITMAP_HELVETICA_18, *c);
     }
-    float text_x = windowWidth - 220 + (200 - text_width_calc) / 2.0f; // 水平居中
+    float text_x =120 - text_width_calc / 2;
     float text_y = 65;                   // 垂直位置
 
     // 绘制主文本
