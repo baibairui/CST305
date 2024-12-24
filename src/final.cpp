@@ -9,7 +9,7 @@
 #include "stb_image.h"
 
 // 全局纹理变量
-GLuint groundTexture, wallTexture, baseTexture, cupTexture;
+GLuint groundTexture, wallTexture, baseTexture;
 
 #ifdef _WIN32
 #include <windows.h>
@@ -38,9 +38,9 @@ static float size = 1.0f;                            // 杯子和把手的整体
 //------------------------------------------------------↓
 // 新
 
-static float cupRadius = 1.0f;     // 杯外壁半径
+static float cupRadius = 0.75f;     // 杯外壁半径
 static float cupHeight = 2.0f;     // 杯身高度
-static float cupThickness = 0.08f; // 杯壁厚度
+static float cupThickness = 0.1f; // 杯壁厚度
 
 // 把手相关参数
 static float handleRadius = 0.75f;      // 把手中心到杯身中心的距离
@@ -87,6 +87,12 @@ float center_x = 0.0f;            // 底座中心X坐标
 float center_y = 0.0f;            // 底座中心Y坐标
 float offsetY = -0.1f;            // 调整按钮向下偏移的量
 
+// 添加贝塞尔曲线相关函数和变量
+struct Point3D
+{
+    float x, y, z;
+    Point3D(float _x = 0, float _y = 0, float _z = 0) : x(_x), y(_y), z(_z) {}
+};
 // ---------------- 粒子效果相关 ----------------
 // 粒子结构体
 struct Particle
@@ -170,6 +176,27 @@ Button buttons[] = {
     {0.1f, 0.9f, 0.35f, 0.18f, "Mode Switch", false},
 };
 
+// 计算贝塞尔曲线点
+Point3D bezierCurve(float t, const std::vector<Point3D> &controlPoints)
+{
+    if (controlPoints.size() < 2)
+        return Point3D();
+
+    std::vector<Point3D> points = controlPoints;
+    int n = points.size();
+
+    for (int r = 1; r < n; r++)
+    {
+        for (int i = 0; i < n - r; i++)
+        {
+            points[i].x = (1 - t) * points[i].x + t * points[i + 1].x;
+            points[i].y = (1 - t) * points[i].y + t * points[i + 1].y;
+            points[i].z = (1 - t) * points[i].z + t * points[i + 1].z;
+        }
+    }
+
+    return points[0];
+}
 // ---------------- 函数声明 ----------------
 void initLighting();
 void updateLighting();
@@ -210,7 +237,7 @@ void resetParticles();
 void drawParticles();
 void resetAtmosphereMode();
 
-//------------------------------------------------------↓
+// 新
 void drawPartialTorus(float bigRadius, float smallRadius,
                       float startAngleDeg, float endAngleDeg,
                       int slices, int stacks)
@@ -253,51 +280,176 @@ void drawPartialTorus(float bigRadius, float smallRadius,
 //------------------------------------------------------
 void drawDrinkingMug()
 {
-    GLUquadric *quad = gluNewQuadric();
-    gluQuadricNormals(quad, GLU_SMOOTH);
-
     glPushMatrix();
     {
         glTranslatef(posX, posY, posZ);
         glScalef(size, size, size);
 
-        // 绘制水杯外壁（仅贴纹理）
-        glEnable(GL_TEXTURE_2D);                  // 启用 2D 纹理
-        glBindTexture(GL_TEXTURE_2D, cupTexture); // 绑定水杯纹理
-        gluQuadricTexture(quad, GL_TRUE);         // 启用自动生成纹理坐标
+        // 设置杯身材质
+        GLfloat cup_ambient[] = {0.2f, 0.2f, 0.22f, 1.0f};
+        GLfloat cup_diffuse[] = {0.8f, 0.8f, 0.85f, 1.0f};
+        GLfloat cup_specular[] = {0.9f, 0.9f, 0.95f, 1.0f};
+        GLfloat cup_shininess[] = {96.0f};
 
-        glColor3f(1.0f, 1.0f, 1.0f); // 确保纹理显示正常
-        gluCylinder(quad, cupRadius, cupRadius, cupHeight, 36, 5);
-        glDisable(GL_TEXTURE_2D); // 禁用纹理
+        glMaterialfv(GL_FRONT, GL_AMBIENT, cup_ambient);
+        glMaterialfv(GL_FRONT, GL_DIFFUSE, cup_diffuse);
+        glMaterialfv(GL_FRONT, GL_SPECULAR, cup_specular);
+        glMaterialfv(GL_FRONT, GL_SHININESS, cup_shininess);
 
-        // 绘制水杯底部（无纹理）
+        // 定义外壁控制点
+        const int numControlPts = 8;
+        GLfloat outerProfile[numControlPts][3] = {
+            {1.2f * cupRadius, 0.0f, 0.0f}, // 底部
+            {1.15f * cupRadius, 0.0f, cupHeight * 0.2f},
+            {1.1f * cupRadius, 0.0f, cupHeight * 0.3f},
+            {1.05f * cupRadius, 0.0f, cupHeight * 0.5f},
+            {1.0f * cupRadius, 0.0f, cupHeight * 0.7f},
+            {1.02f * cupRadius, 0.0f, cupHeight * 0.8f},
+            {1.05f * cupRadius, 0.0f, cupHeight * 0.9f},
+            {1.1f * cupRadius, 0.0f, cupHeight} // 顶部
+        };
+
+        // 定义内壁控制点
+        GLfloat innerProfile[numControlPts][3];
+        for (int i = 0; i < numControlPts; i++)
+        {
+            innerProfile[i][0] = outerProfile[i][0] - cupThickness;
+            innerProfile[i][1] = outerProfile[i][1];
+            innerProfile[i][2] = outerProfile[i][2];
+        }
+
+        const int numSegments = 100; // 圆周细分
+        const int numDrawSegs = 50;  // 纵向细分
+
+        // 设置曲线映射
+        glMap1f(GL_MAP1_VERTEX_3, 0.0f, 1.0f, 3, numControlPts, &outerProfile[0][0]);
+        glEnable(GL_MAP1_VERTEX_3);
+
+        // 开始绘制外壁
+        glBegin(GL_QUAD_STRIP);
+        for (int i = 0; i <= numSegments; i++)
+        {
+            float angle = (2.0f * M_PI * i) / numSegments;
+            float nextAngle = (2.0f * M_PI * (i + 1)) / numSegments;
+
+            for (int j = 0; j <= numDrawSegs; j++)
+            {
+                float t = (float)j / numDrawSegs;
+
+                glEnable(GL_SMOOTH);
+                // 根据 t 和 angle 生成颜色
+                float r = 1.0; // 周向变化的红色分量
+                float g = (float)i / numSegments;                      // 高度变化的绿色分量
+                float b = 1.0f - t;               // 高度变化的蓝色分量
+
+                // 设置法线
+                float nx = cos(angle);
+                float ny = sin(angle);
+                glNormal3f(nx, ny, 0.0f);
+
+                // 设置顶点 1 的颜色和位置
+                glColor3f(r, g, b); // 设置颜色
+                glPushMatrix();
+                {
+                    glRotatef(angle * 180.0f / (float)M_PI, 0, 0, 1);
+                    glEvalCoord1f(t); // 插值顶点位置
+                }
+                glPopMatrix();
+
+                // 设置顶点 2 的颜色和位置
+                glColor3f(r, g, b); // 颜色与顶点 1 一致
+                glPushMatrix();
+                {
+                    glRotatef(nextAngle * 180.0f / (float)M_PI, 0, 0, 1);
+                    glEvalCoord1f(t); // 插值顶点位置
+                }
+                glPopMatrix();
+            }
+        }
+        glEnd();
+
+        // 2. 绘制内壁
+        glMap1f(GL_MAP1_VERTEX_3, 0.0, 1.0, 3, numControlPts, &innerProfile[0][0]);
+
+        glBegin(GL_QUAD_STRIP);
+        for (int i = 0; i <= numSegments; i++)
+        {
+            float angle = (2.0f * M_PI * i) / numSegments;
+            float nextAngle = (2.0f * M_PI * (i + 1)) / numSegments;
+
+            for (int j = 0; j <= numDrawSegs; j++)
+            {
+                float t = (float)j / numDrawSegs;
+
+                float x = innerProfile[(int)(t * (numControlPts - 1))][0];
+                float z = innerProfile[(int)(t * (numControlPts - 1))][2];
+
+                // 内壁法线方向相反
+                float nx = -cos(angle);
+                float ny = -sin(angle);
+                glNormal3f(nx, ny, 0.0f);
+
+                glVertex3f(x * cos(angle), x * sin(angle), z);
+                glVertex3f(x * cos(nextAngle), x * sin(nextAngle), z);
+            }
+        }
+        glEnd();
+
+        // 3. 绘制杯底
+        glBegin(GL_TRIANGLE_FAN);
+        glNormal3f(0.0f, 0.0f, -1.0f);
+        glVertex3f(0.0f, 0.0f, 0.0f);
+        for (int i = 0; i <= numSegments; i++)
+        {
+            float angle = (2.0f * M_PI * i) / numSegments;
+            glVertex3f(outerProfile[0][0] * cos(angle),
+                       outerProfile[0][0] * sin(angle), 0.0f);
+        }
+        glEnd();
+
+        // 4. 绘制杯口边缘
+        glBegin(GL_QUAD_STRIP);
+        for (int i = 0; i <= numSegments; i++)
+        {
+            float angle = (2.0f * M_PI * i) / numSegments;
+            float nx = cos(angle);
+            float ny = sin(angle);
+
+            glNormal3f(nx, ny, 0.0f);
+
+            glVertex3f(outerProfile[numControlPts - 1][0] * cos(angle),
+                       outerProfile[numControlPts - 1][0] * sin(angle),
+                       cupHeight);
+
+            glVertex3f(innerProfile[numControlPts - 1][0] * cos(angle),
+                       innerProfile[numControlPts - 1][0] * sin(angle),
+                       cupHeight);
+        }
+        glEnd();
+
+        // 5. 绘制把手
+        GLfloat handle_ambient[] = {0.2f, 0.2f, 0.22f, 1.0f};
+        GLfloat handle_diffuse[] = {0.7f, 0.7f, 0.75f, 1.0f};
+        GLfloat handle_specular[] = {0.8f, 0.8f, 0.85f, 1.0f};
+        GLfloat handle_shininess[] = {64.0f};
+
+        glMaterialfv(GL_FRONT, GL_AMBIENT, handle_ambient);
+        glMaterialfv(GL_FRONT, GL_DIFFUSE, handle_diffuse);
+        glMaterialfv(GL_FRONT, GL_SPECULAR, handle_specular);
+        glMaterialfv(GL_FRONT, GL_SHININESS, handle_shininess);
+
         glPushMatrix();
-        glColor3f(0.7f, 0.7f, 0.75f);
-        gluDisk(quad, 0.0, cupRadius, 36, 1);
-        glPopMatrix();
-
-        // 绘制水杯内壁（无纹理）
-        float innerRadius = cupRadius - cupThickness;
-        glPushMatrix();
-        glTranslatef(0.0f, 0.0f, cupThickness);
-        glColor3f(0.9f, 0.9f, 0.95f);
-        gluCylinder(quad, innerRadius, innerRadius, cupHeight - cupThickness, 36, 5);
-        glPopMatrix();
-
-        // 绘制水杯把手（无纹理）
-        glPushMatrix();
-        glTranslatef(cupRadius, 0.0f, cupHeight * 0.5f);
-        glRotatef(90.0f, 1.0f, 0.0f, 0.0f);
-        glRotatef(90.0f, 0.0f, 0.0f, 1.0f);
-        glColor3f(0.7f, 0.7f, 0.75f);
-        drawPartialTorus(handleRadius, handleTubeRadius,
-                         handleStartAngle, handleEndAngle,
-                         handleSlices, handleStacks);
+        {
+            glTranslatef(cupRadius, 0.0f, cupHeight * 0.5f);
+            glRotatef(90.0f, 1.0f, 0.0f, 0.0f);
+            glRotatef(90.0f, 0.0f, 0.0f, 1.0f);
+            drawPartialTorus(handleRadius, handleTubeRadius,
+                             handleStartAngle, handleEndAngle,
+                             handleSlices, handleStacks);
+        }
         glPopMatrix();
     }
     glPopMatrix();
-
-    gluDeleteQuadric(quad);
 }
 
 //------------------------------------------------------↑
@@ -418,81 +570,6 @@ void drawShadow()
     glDepthFunc(savedDepthFunc);
     glEnable(GL_LIGHTING);
     glDisable(GL_BLEND);
-}
-
-// 添加绘制正方体的函数
-void drawCube()
-{
-    glPushMatrix();
-
-    // 设置正方体位置：靠近灯的底座
-    float cube_size = 0.5f; // 正方体大小
-    // 位置在底座边缘附近
-    float cube_x = base_radius - cube_size + 2.0f;
-    float cube_y = 2.0f;
-    float cube_z = -5.0f + base_height; // 与底座顶部齐平
-
-    glTranslatef(cube_x, cube_y, cube_z);
-
-    // 设置材质属性
-    GLfloat cube_ambient[] = {0.2f, 0.2f, 0.2f, 1.0f};
-    GLfloat cube_diffuse[] = {0.8f, 0.8f, 0.8f, 1.0f};
-    GLfloat cube_specular[] = {1.0f, 1.0f, 1.0f, 1.0f};
-    GLfloat cube_shininess[] = {100.0f};
-
-    glMaterialfv(GL_FRONT, GL_AMBIENT, cube_ambient);
-    glMaterialfv(GL_FRONT, GL_DIFFUSE, cube_diffuse);
-    glMaterialfv(GL_FRONT, GL_SPECULAR, cube_specular);
-    glMaterialfv(GL_FRONT, GL_SHININESS, cube_shininess);
-
-    // 绘制正方体
-    glBegin(GL_QUADS);
-
-    // 前面
-    glNormal3f(0.0f, -1.0f, 0.0f);
-    glVertex3f(-cube_size / 2, -cube_size / 2, cube_size / 2);
-    glVertex3f(cube_size / 2, -cube_size / 2, cube_size / 2);
-    glVertex3f(cube_size / 2, -cube_size / 2, -cube_size / 2);
-    glVertex3f(-cube_size / 2, -cube_size / 2, -cube_size / 2);
-
-    // 后面
-    glNormal3f(0.0f, 1.0f, 0.0f);
-    glVertex3f(-cube_size / 2, cube_size / 2, -cube_size / 2);
-    glVertex3f(cube_size / 2, cube_size / 2, -cube_size / 2);
-    glVertex3f(cube_size / 2, cube_size / 2, cube_size / 2);
-    glVertex3f(-cube_size / 2, cube_size / 2, cube_size / 2);
-
-    // 顶面
-    glNormal3f(0.0f, 0.0f, 1.0f);
-    glVertex3f(-cube_size / 2, -cube_size / 2, cube_size / 2);
-    glVertex3f(-cube_size / 2, cube_size / 2, cube_size / 2);
-    glVertex3f(cube_size / 2, cube_size / 2, cube_size / 2);
-    glVertex3f(cube_size / 2, -cube_size / 2, cube_size / 2);
-
-    // 底面
-    glNormal3f(0.0f, 0.0f, -1.0f);
-    glVertex3f(-cube_size / 2, -cube_size / 2, -cube_size / 2);
-    glVertex3f(cube_size / 2, -cube_size / 2, -cube_size / 2);
-    glVertex3f(cube_size / 2, cube_size / 2, -cube_size / 2);
-    glVertex3f(-cube_size / 2, cube_size / 2, -cube_size / 2);
-
-    // 右面
-    glNormal3f(1.0f, 0.0f, 0.0f);
-    glVertex3f(cube_size / 2, -cube_size / 2, -cube_size / 2);
-    glVertex3f(cube_size / 2, -cube_size / 2, cube_size / 2);
-    glVertex3f(cube_size / 2, cube_size / 2, cube_size / 2);
-    glVertex3f(cube_size / 2, cube_size / 2, -cube_size / 2);
-
-    // 左面
-    glNormal3f(-1.0f, 0.0f, 0.0f);
-    glVertex3f(-cube_size / 2, -cube_size / 2, -cube_size / 2);
-    glVertex3f(-cube_size / 2, cube_size / 2, -cube_size / 2);
-    glVertex3f(-cube_size / 2, cube_size / 2, cube_size / 2);
-    glVertex3f(-cube_size / 2, -cube_size / 2, cube_size / 2);
-
-    glEnd();
-
-    glPopMatrix();
 }
 // ---------------- 初始化光照 ----------------
 void initLighting()
@@ -1426,10 +1503,9 @@ GLuint loadTexture(const char *filename)
 }
 void loadTextures()
 {
-    groundTexture = loadTexture("src/image copy 9.png"); // 替换为您的地面纹理文件
-    wallTexture = loadTexture("src/image copy 11.png");  // 替换为您的墙壁纹理文件
-    baseTexture = loadTexture("src/image copy 6.png");
-    cupTexture = loadTexture("src/image.png");
+    groundTexture = loadTexture("src/ground.png"); // 替换为您的地面纹理文件
+    wallTexture = loadTexture("src/wall.png");  // 替换为您的墙壁纹理文件
+    baseTexture = loadTexture("src/base.png");
 
     if (groundTexture == 0 || wallTexture == 0)
     {

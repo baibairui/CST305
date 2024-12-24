@@ -3,6 +3,7 @@
         "*.md": "markdown",
         "*.cpp": "cpp",
         "*.tex": "latex",
-        "cstdlib": "cpp"
+        "cstdlib": "cpp",
+        "vector": "cpp"
     }
 }
